@@ -11,13 +11,15 @@ import numpy
 import theano
 import theano.tensor as T
 import LogisticRegression
+import gzip
 
 from MLP import MLP
 from DataLoader import DataLoader
-from sklearn import cross_validation
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.feature_extraction.text import TfidfTransformer
-from pandas import DataFrame as df
+import pickle
+import urllib.request as urllib
+
 
 def get_training_test_m(path, indices):
     data_loader = DataLoader(path)
@@ -31,6 +33,7 @@ def get_training_test_m(path, indices):
     return [x_train_tfidf, y]
 
 def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000, batch_size=20, n_hidden=500):
+
     """
     Demonstrate stochastic gradient descent optimization for a multilayer
     perceptron
@@ -65,17 +68,18 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000, batc
     data = get_training_test_m(path, names)
     features = data[0]
     targets = numpy.intc(data[1])
+    targets[targets == -1] = 0
     data_sets = numpy.asarray(features.todense())
     data_sets = numpy.transpose(data_sets)
-    data_sets = data_sets[:, :2000]
     train_set_stop = 2000*.5
     valid_set_stop = 2000*.25 + train_set_stop
     test_set_stop = 2000*.25 + valid_set_stop
-    train_set_x = data_sets[:, train_set_stop]
-    train_set_y = targets[:train_set_stop]
-    valid_set_x = data_sets[:, train_set_stop:valid_set_stop]
+    train_set_x = data_sets[:train_set_stop, :]
+    train_set_y = numpy.asarray(targets[:train_set_stop])
+
+    valid_set_x = data_sets[train_set_stop:valid_set_stop, :]
     valid_set_y = targets[train_set_stop:valid_set_stop]
-    test_set_x = data_sets[:, valid_set_stop:test_set_stop]
+    test_set_x = data_sets[valid_set_stop:test_set_stop, :]
     test_set_y = targets[valid_set_stop:test_set_stop]
     # compute number of minibatches for training, validation and testing
     n_train_batches = int(2000 / batch_size)
@@ -86,6 +90,7 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000, batc
     x = T.matrix('x')  # the data is presented as rasterized images
     y = T.ivector('y')  # the labels are presented as 1D vector of
                         # [int] labels
+
     test_set_x = theano.shared(test_set_x, 'test_set_x')
     test_set_y = theano.shared(test_set_y, 'test_set_y')
     valid_set_x = theano.shared(valid_set_x, 'valid_set_x')
@@ -99,9 +104,9 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000, batc
     classifier = MLP(
         rng=rng,
         input=x,
-        n_in=features.shape[0],
+        n_in= data_sets.shape[1],
         n_hidden=n_hidden,
-        n_out=1
+        n_out=2
     )
 
     # start-snippet-4
