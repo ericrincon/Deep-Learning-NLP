@@ -102,6 +102,7 @@ class LogisticRegression(object):
         """Return a float representing the number of errors in the minibatch
         over the total number of examples of the minibatch ; zero one
         loss over the size of the minibatch
+        loss over the size of the minibatch
 
         :type y: theano.tensor.TensorType
         :param y: corresponds to a vector that gives for each example the
@@ -118,6 +119,15 @@ class LogisticRegression(object):
         if y.dtype.startswith('int'):
             # the T.neq operator returns a vector of 0s and 1s, where 1
             # represents a mistake in prediction
-            return T.mean(T.neq(self.y_pred, y))
+
+             return T.mean(T.neq(self.y_pred, y))
+          #  return self.f1_score(y)
         else:
             raise NotImplementedError()
+    def f1_score(self, y):
+        n_total = y.shape[0]
+        n_wrong = T.neq(self.y_pred, y)
+        n_predicted = n_total - n_wrong
+        precision =  (n_predicted - n_wrong)/n_predicted
+        recall = (n_predicted - n_wrong)/n_total
+        return 2 * (precision * recall)/(precision + recall)

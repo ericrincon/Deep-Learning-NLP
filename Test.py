@@ -7,19 +7,42 @@ import time
 
 import numpy
 
-
 import theano
 import theano.tensor as T
-import LogisticRegression
-import gzip
 
 from MLP import MLP
 from DataLoader import DataLoader
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.feature_extraction.text import TfidfTransformer
-import pickle
-import urllib.request as urllib
 
+def create_random_samples(targets, documents, train_p, valid_p, test_p):
+    indices_for_all_positives = numpy.asarray(targets.nonzero())[0]
+    indices_for_all_negatives = numpy.asarray(numpy.where(targets == 0))[0] # vector indices for the negatives
+    positive_element_size = indices_for_all_positives.shape[0]
+    random_negative_indices = numpy.random.choice(indices_for_all_negatives, positive_element_size)
+    indices = numpy.concatenate([indices_for_all_positives, random_negative_indices])
+    numpy.random.shuffle(indices)
+    indices = indices[:360]
+    new_targets = targets[indices]
+    new_documents = documents[indices, :]
+    n_documents = new_documents.shape[0]
+    train_set_n_cols = n_documents*train_p
+
+    valid_set_n_cols = n_documents*valid_p + train_set_n_cols
+    test_set_n_cols = n_documents*test_p + valid_set_n_cols
+
+    train_features = new_documents[:train_set_n_cols, :]
+    train_targets = new_targets[:train_set_n_cols]
+
+    valid_features = new_documents[train_set_n_cols: valid_set_n_cols,:]
+    valid_targets = new_targets[train_set_n_cols: valid_set_n_cols]
+
+    test_features = new_documents[valid_set_n_cols:, :]
+    test_targets = new_targets[valid_set_n_cols:test_set_n_cols]
+    features = [train_features, valid_features, test_features]
+    targets = [train_targets, valid_targets, test_targets]
+
+    return [features, targets]
 
 def get_training_test_m(path, indices):
     data_loader = DataLoader(path)
@@ -32,7 +55,7 @@ def get_training_test_m(path, indices):
     x_train_tfidf = tfidf_transformer.fit_transform(x_train_counts)
     return [x_train_tfidf, y]
 
-def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000, batch_size=20, n_hidden=500):
+def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=1, n_epochs=1000, batch_size=20, n_hidden=2250):
 
     """
     Demonstrate stochastic gradient descent optimization for a multilayer
@@ -42,7 +65,7 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000, batc
 
     :type learning_rate: float
     :param learning_rate: learning rate used (factor for the stochastic
-    gradient
+    gradien
 
     :type L1_reg: float
     :param L1_reg: L1-norm's weight when added to the cost (see
@@ -60,9 +83,8 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000, batc
                  http://www.iro.umontreal.ca/~lisa/deep/data/mnist/mnist.pkl.gz
 
 
-   """
+    """
     #names: represents the ith column that must be read. 1: Title, 2: Abstract, 4: MESH, and y: is the column for the target values
-
     path = 'datasets/ACEInhibitors_processed.csv'
     names = {1:'title' ,4:'abstract', 5:'mesh', 'y':6}
     data = get_training_test_m(path, names)
@@ -70,41 +92,43 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000, batc
     targets = numpy.intc(data[1])
     targets[targets == -1] = 0
     data_sets = numpy.asarray(features.todense())
-    data_sets = numpy.transpose(data_sets)
-    train_set_stop = 2000*.5
-    valid_set_stop = 2000*.25 + train_set_stop
-    test_set_stop = 2000*.25 + valid_set_stop
-    train_set_x = data_sets[:train_set_stop, :]
-    train_set_y = numpy.asarray(targets[:train_set_stop])
+    train_percent = .6
+    valid_percent = .2
+    test_percent = .2
+    features, targets = create_random_samples(targets, data_sets, train_percent, valid_percent, test_percent)
 
-    valid_set_x = data_sets[train_set_stop:valid_set_stop, :]
-    valid_set_y = targets[train_set_stop:valid_set_stop]
-    test_set_x = data_sets[valid_set_stop:test_set_stop, :]
-    test_set_y = targets[valid_set_stop:test_set_stop]
-    # compute number of minibatches for training, validation and testing
-    n_train_batches = int(2000 / batch_size)
-    n_valid_batches = int(500 / batch_size)
-    n_test_batches = int(500 / batch_size)
+    train_set_x = features[0]
+    train_set_y = targets[0]
+    valid_set_x = features[1]
+    valid_set_y = targets[1]
+
+    test_set_x = features[2]
+    test_set_y = targets[2]
+    #compute number of minibatches for training, validation and testing
+    print(train_set_y)
+
+    n_train_batches = int(train_set_x.shape[0] / batch_size)
+    n_valid_batches = int(valid_set_x.shape[0] / batch_size)
+    n_test_batches = int(test_set_x.shape[0] / batch_size)
     # allocate symbolic variables for the data
     index = T.lscalar('index')  # index to a [mini]batch
     x = T.matrix('x')  # the data is presented as rasterized images
     y = T.ivector('y')  # the labels are presented as 1D vector of
                         # [int] labels
-
+    number_in = test_set_x.shape[1]
     test_set_x = theano.shared(test_set_x, 'test_set_x')
     test_set_y = theano.shared(test_set_y, 'test_set_y')
     valid_set_x = theano.shared(valid_set_x, 'valid_set_x')
     valid_set_y = theano.shared(valid_set_y, 'valid_set_y')
     train_set_x = theano.shared(train_set_x, 'train_set_x')
     train_set_y = theano.shared(train_set_y, 'train_set_y')
-
     rng = numpy.random.RandomState(1234)
-    # construct the MLP class
 
+    # construct the MLP class
     classifier = MLP(
         rng=rng,
         input=x,
-        n_in= data_sets.shape[1],
+        n_in = number_in,
         n_hidden=n_hidden,
         n_out=2
     )
@@ -237,6 +261,7 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000, batc
                                    in range(n_test_batches)]
                     test_score = numpy.mean(test_losses)
 
+
                     print(('     epoch %i, minibatch %i/%i, test error of '
                            'best model %f %%') %
                           (epoch, minibatch_index + 1, n_train_batches,
@@ -250,9 +275,9 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000, batc
     print(('Optimization complete. Best validation score of %f %% '
            'obtained at iteration %i, with test performance %f %%') %
           (best_validation_loss * 100., best_iter + 1, test_score * 100.))
-    print >> sys.stderr, ('The code for file ' +
+    print(sys.stderr, ('The code for file ' +
                           os.path.split(__file__)[1] +
-                          ' ran for %.2fm' % ((end_time - start_time) / 60.))
+                          ' ran for %.2fm' % ((end_time - start_time) / 60.)))
 
 
 if __name__ == '__main__':

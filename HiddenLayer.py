@@ -3,6 +3,7 @@ __author__ = 'eric_rincon'
 import theano.tensor as T
 import theano
 import numpy
+
 class HiddenLayer(object):
     def __init__(self, rng, input, n_in, n_out, W=None, b=None,
                  activation=T.tanh):
@@ -44,12 +45,13 @@ class HiddenLayer(object):
         #        compared to tanh
         #        We have no info for other function, so we use the same as
         #        tanh.
+
         if W is None:
             W_values = numpy.asarray(
                 rng.uniform(
-                    low=-numpy.sqrt(6. / (n_in + n_out)),
-                    high=numpy.sqrt(6. / (n_in + n_out)),
-                    size=(n_in, n_out)
+                    low = -numpy.sqrt(6. / (n_in + n_out)),
+                    high = numpy.sqrt(6. / (n_in + n_out)),
+                    size = (n_in, n_out)
                 ),
                 dtype=theano.config.floatX
             )

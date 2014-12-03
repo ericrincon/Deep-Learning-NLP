@@ -49,7 +49,7 @@ class MLP(object):
             input=input,
             n_in=n_in,
             n_out=n_hidden,
-            activation=T.tanh
+            activation=T.nnet.sigmoid
         )
 
         # The logistic regression layer gets as input the hidden units
@@ -81,7 +81,7 @@ class MLP(object):
         )
         # same holds for the function computing the number of errors
         self.errors = self.logRegressionLayer.errors
-
+        self.f1_score = self.logRegressionLayer.f1_score
         # the parameters of the model are the parameters of the two layer it is
         # made out of
         self.params = self.hiddenLayer.params + self.logRegressionLayer.params

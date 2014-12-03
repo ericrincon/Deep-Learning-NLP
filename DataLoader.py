@@ -27,6 +27,7 @@ class DataLoader(object):
 
         y_i = columns.pop('y')
         keys = list(columns.keys())
+        n = 0
 
         #iterate over all csv files provided
         for csv_file in self.csv_files:
@@ -40,15 +41,18 @@ class DataLoader(object):
                 document_strings = ""
                 features = ""
                 feature_vector = ""
-
                 #iterates over all the keys in the dictionary and
                 for n_key in keys:
                     document_strings = csv_file.iloc[row,n_key].split()
+
+                    n+=1
+
                     #concatenate the row name to each respective feature
                     for string in document_strings:
                         features += (columns[n_key] + string) + " "
-                    feature_vector+=features
-                    feature_matrix.append(numpy.asarray(feature_vector))
+
+                    feature_vector += features
+                feature_matrix.append(numpy.asarray(feature_vector))
 
         return [numpy.asarray(feature_matrix), numpy.asarray(csv_file.iloc[:, y_i])]
 
