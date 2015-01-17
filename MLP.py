@@ -17,7 +17,12 @@ class MLP(object):
     class).
     """
 
-    def __init__(self, rng, input, n_in, n_hidden, n_out):
+    def __init__(self, rng, input, n_in, n_hidden, n_out, a_function=T.tanh):
+        self.rng=rng,
+        self.input=input,
+        self.n_in=n_in,
+        self.n_out=n_hidden,
+        self.activation=a_function
         """Initialize the parameters for the multilayer perceptron
 
         :type rng: numpy.random.RandomState
@@ -44,12 +49,13 @@ class MLP(object):
         # into a HiddenLayer with a tanh activation function connected to the
         # LogisticRegression layer; the activation function can be replaced by
         # sigmoid or any other nonlinear function
+
         self.hiddenLayer = HiddenLayer(
             rng=rng,
             input=input,
             n_in=n_in,
             n_out=n_hidden,
-            activation=T.nnet.sigmoid
+            activation=a_function
         )
 
         # The logistic regression layer gets as input the hidden units
@@ -72,7 +78,6 @@ class MLP(object):
             (self.hiddenLayer.W ** 2).sum()
             + (self.logRegressionLayer.W ** 2).sum()
         )
-
         # negative log likelihood of the MLP is given by the negative
         # log likelihood of the output of the model, computed in the
         # logistic regression layer

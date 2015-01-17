@@ -32,7 +32,6 @@ class HiddenLayer(object):
         :param activation: Non linearity to be applied in the hidden
                            layer
         """
-        self.input = input
          # `W` is initialized with `W_values` which is uniformely sampled
         # from sqrt(-6./(n_in+n_hidden)) and sqrt(6./(n_in+n_hidden))
         # for tanh activation function

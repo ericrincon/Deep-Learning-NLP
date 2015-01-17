@@ -3,6 +3,8 @@ __author__ = 'eric_rincon'
 import theano
 import numpy
 import theano.tensor as T
+import sklearn.metrics as m
+
 class LogisticRegression(object):
     """Multi-class Logistic Regression Class
 
@@ -56,7 +58,9 @@ class LogisticRegression(object):
         # x is a matrix where row-j  represents input training sample-j
         # b is a vector where element-k represent the free parameter of hyper
         # plain-k
+
         self.p_y_given_x = T.nnet.softmax(T.dot(input, self.W) + self.b)
+
 
         # symbolic description of how to compute prediction as class whose
         # probability is maximal
@@ -65,7 +69,6 @@ class LogisticRegression(object):
 
         # parameters of the model
         self.params = [self.W, self.b]
-
     def negative_log_likelihood(self, y):
         """Return the mean of the negative log-likelihood of the prediction
         of this model under a given target distribution.
@@ -95,6 +98,7 @@ class LogisticRegression(object):
         # LP[n-1,y[n-1]]] and T.mean(LP[T.arange(y.shape[0]),y]) is
         # the mean (across minibatch examples) of the elements in v,
         # i.e., the mean log-likelihood across the minibatch.
+
         return -T.mean(T.log(self.p_y_given_x)[T.arange(y.shape[0]), y])
         # end-snippet-2
 
@@ -121,13 +125,20 @@ class LogisticRegression(object):
             # represents a mistake in prediction
 
              return T.mean(T.neq(self.y_pred, y))
-          #  return self.f1_score(y)
         else:
             raise NotImplementedError()
+
     def f1_score(self, y):
         n_total = y.shape[0]
-        n_wrong = T.neq(self.y_pred, y)
-        n_predicted = n_total - n_wrong
-        precision =  (n_predicted - n_wrong)/n_predicted
-        recall = (n_predicted - n_wrong)/n_total
-        return 2 * (precision * recall)/(precision + recall)
+        n_relevant_documents_predicted = T.sum(T.eq(T.ones(self.y_pred.shape), self.y_pred))
+        two_vector = T.add(T.ones(self.y_pred.shape), T.ones(self.y_pred.shape))
+        n_relevant_predicted_correctly = T.sum(T.eq(T.add(self.y_pred, y), two_vector))
+        precision = T.true_div(n_relevant_predicted_correctly, n_relevant_documents_predicted)
+        recall = T.true_div(n_relevant_predicted_correctly, n_total)
+        return T.mul(2.0, T.true_div(T.mul(precision, recall), T.add(precision, recall)))
+
+    #Work in progress
+    def auc_score(self, y):
+        self.p_y_given_x.out.eval()
+        return m.auc_score(y, self.p_y_given_x)
+
