@@ -23,6 +23,8 @@ class MLP(object):
         self.n_in=n_in,
         self.n_out=n_hidden,
         self.activation=a_function
+        self.metrics = {"F1": 0, "Precision": 0, "Recall": 0, "ROC": 0}
+
         """Initialize the parameters for the multilayer perceptron
 
         :type rng: numpy.random.RandomState
@@ -86,7 +88,10 @@ class MLP(object):
         )
         # same holds for the function computing the number of errors
         self.errors = self.logRegressionLayer.errors
+
+        #Returns the list [f1_score, precision, recall]
         self.f1_score = self.logRegressionLayer.f1_score
+
         # the parameters of the model are the parameters of the two layer it is
         # made out of
         self.params = self.hiddenLayer.params + self.logRegressionLayer.params

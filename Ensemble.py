@@ -2,55 +2,54 @@ __author__ = 'eric_rincon'
 
 import theano
 import numpy
-from scipy.stats.mstats import mode
+import pickle
 
+import sys
+
+from scipy.stats.mstats import mode
+from sklearn.metrics import roc_auc_score
 from DataLoader import DataLoader
 from RunMLP import RunMLP
 from MLP import MLP
 from theano import tensor as T
+
 class Ensemble:
-    def __init__(self, n):
+    def __init__(self, n, data, file = ''):
         self.n_classifiers = n
         self.classifiers = []
-        self.test_x_y = []
+        self.training_data = data[0]
+        self.test_data = data[1]
+        self.file = file
 
 
     def train_ensemble(self, mlp_parameters):
-        path = 'datasets/ACEInhibitors_processed.csv'
-        names = {1:'title' ,4:'abstract', 5:'mesh', 'y':6}
-        data_loader = DataLoader(path)
-        data = data_loader.get_training_test_m(path, names)
-        features = data[0]
-        target_labels = data[1]
+        features = self.training_data[0]
+        target_labels = self.training_data[1]
         train_percent = .6
         valid_percent = .2
         test_percent = .2
-        updated_data, test_data  = data_loader.create_random_samples(features, target_labels, test_p=test_percent,
-                                                                     get_ensemble_targets=True)
-        features = updated_data[0]
-        target_labels = updated_data[1]
-        test_features = test_data[0][0]
-        test_target_labels = test_data[1][0]
-        self.test_x_y.append(test_features)
-        self.test_x_y.append(test_target_labels)
-
+        test_features = self.test_data[0]
+        test_target_labels = self.test_data[1]
         for n in range(self.n_classifiers):
-            sampled_data = data_loader.create_random_samples(features, target_labels, train_p=.6,valid_p=.2)
+            output = "Classifier {} ".format(n)
+            self.file.write(output)
+            data_loader = DataLoader()
+            sampled_data = data_loader.create_random_samples(features=features, targets=target_labels, train_p=.6,valid_p=.2)
             x = sampled_data[0]
             x.append(test_features)
             y = sampled_data[1]
             y.append(test_target_labels)
             mlp = RunMLP(x, y, n_layers=mlp_parameters['n_layers'])
+            print("Classifier ", n)
             classifier = mlp.run(learning_rate=mlp_parameters['learning_rate'], L1_reg=mlp_parameters['L1_term'],
                                  L2_reg=mlp_parameters['L2_term'], n_epochs=mlp_parameters['n_epochs'],
                                  batch_size=mlp_parameters['batch_size'],
                                  n_hidden_units=mlp_parameters['n_hidden_units'],
-                                 activation_function=mlp_parameters['activation_function'])
+                                 activation_function=mlp_parameters['activation_function'], file=self.file)
             self.classifiers.append(classifier)
-
     def test_ensamble(self, data=[]):
         if not data:
-            data = self.test_x_y
+            data = self.test_data
 
         test_set_x = theano.shared(data[0], 'test_set_x')
         test_set_y = data[1]
@@ -72,10 +71,14 @@ class Ensemble:
             )
             predictions.append(get_y_pred())
         prediction_matrix = predictions.pop(0)[:, numpy.newaxis]
-
+        #Work in progress
         for prediction in predictions:
+            auc = roc_auc_score(test_set_y, prediction)
+            print('ROC score: ', auc)
             prediction_matrix = numpy.hstack((prediction_matrix, prediction[:, numpy.newaxis]))
         predictions = mode(prediction_matrix, 1)
         n_correct = numpy.sum(numpy.equal(predictions, test_set_y[:, numpy.newaxis])[0])
         percentage_correct = n_correct/test_set_y.shape[0]
-        print('Ensemble percentage correct: ', percentage_correct*100, '%')
+        output = 'Ensemble percentage correct: {}%\n'.format(percentage_correct*100)
+        self.file.write(output)
+        print(output)

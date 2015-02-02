@@ -3,7 +3,8 @@ __author__ = 'eric_rincon'
 import theano
 import numpy
 import theano.tensor as T
-import sklearn.metrics as m
+
+from sklearn.metrics import auc_score
 
 class LogisticRegression(object):
     """Multi-class Logistic Regression Class
@@ -135,10 +136,7 @@ class LogisticRegression(object):
         n_relevant_predicted_correctly = T.sum(T.eq(T.add(self.y_pred, y), two_vector))
         precision = T.true_div(n_relevant_predicted_correctly, n_relevant_documents_predicted)
         recall = T.true_div(n_relevant_predicted_correctly, n_total)
-        return T.mul(2.0, T.true_div(T.mul(precision, recall), T.add(precision, recall)))
+        f1_score =  T.mul(2.0, T.true_div(T.mul(precision, recall), T.add(precision, recall)))
+        return [f1_score, precision, recall]
 
-    #Work in progress
-    def auc_score(self, y):
-        self.p_y_given_x.out.eval()
-        return m.auc_score(y, self.p_y_given_x)
 

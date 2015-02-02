@@ -24,7 +24,7 @@ class RunMLP(object):
         self.number_layers = n_layers
 
     def run(self, learning_rate=0.01, L1_reg=0.00, L2_reg=.01, n_epochs=5, batch_size=20, n_hidden_units=100,
-            activation_function = T.tanh):
+            activation_function = T.tanh, file = ''):
 
         """
         Demonstrate stochastic gradient descent optimization for a multilayer
@@ -57,7 +57,6 @@ class RunMLP(object):
         test_set_y = self.targets[2]
 
         #compute number of minibatches for training, validation and testing
-
         n_train_batches = int(train_set_x.shape[0] / batch_size)
         n_valid_batches = int(valid_set_x.shape[0] / batch_size)
         n_test_batches = int(test_set_x.shape[0] / batch_size)
@@ -220,9 +219,14 @@ class RunMLP(object):
                                        in range(n_test_batches)]
                         test_score = numpy.mean(test_losses)
 
-                        f1_scores = [f1_model(i) for i in range(n_test_batches)]
+                        f1_scores = [f1_model(i)[0] for i in range(n_test_batches)]
                         f1_score = numpy.mean(f1_scores)
 
+                        precision = [f1_model(i)[1] for i in range(n_test_batches)]
+                        precision_avg = numpy.mean(precision)
+
+                        recall = [f1_model(i)[2] for i in range(n_test_batches)]
+                        recall_avg = numpy.mean(recall)
 
 
 
@@ -236,9 +240,11 @@ class RunMLP(object):
                     done_looping = True
                     break
 
+        output = "F1 Score Average: {}\nPrecision Average: {}\n" \
+                 "Recall Average: {}\n".format(f1_score, precision_avg, recall_avg)
         end_time = time.clock()
-
-        print("f1 score ", f1_score)
+        file.write(output)
+        print(output)
         print(('Optimization complete. Best validation score of %f %% '
                'obtained at iteration %i, with test performance %f %%') %
               (best_validation_loss * 100., best_iter + 1, test_score * 100.))
