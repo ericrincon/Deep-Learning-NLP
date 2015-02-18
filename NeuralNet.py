@@ -1,31 +1,43 @@
 __author__ = 'eric_rincon'
 
 import time
-
 import numpy
 
 import theano
 import theano.tensor as T
-import os
-import sys
+
+from sklearn.metrics import f1_score
+from sklearn.metrics import precision_score
+from sklearn.metrics import recall_score
+from sklearn.metrics import roc_auc_score
+from sklearn.metrics import accuracy_score
 
 from MLP import MLP
 
-class RunMLP(object):
-
+class NeuralNet:
     """
         Attributes:
             features: Numpy array matrix that represents features
             targets: Numpy array matrix that represents the
     """
-    def __init__(self, f, t, n_layers=1):
-        self.features = f
-        self.targets = t
-        self.number_layers = n_layers
+    def __init__(self, metric_list="none", parameter_list="none"):
+        # allocate symbolic variables for the data
+        self.x = T.matrix('x')  #
+        self.y = T.ivector('y')  # the labels are presented as 1D vector of
+                            # [int] labels
+        if metric_list == "none":
+            self.metrics = {"F1": 0, "Accuracy": 0, "AUC": 0, "Precision": 0, "Recall": 0}
+        else:
+            self.metrics = metric_list
 
-    def run(self, learning_rate=0.01, L1_reg=0.00, L2_reg=.01, n_epochs=5, batch_size=20, n_hidden_units=100,
-            activation_function = T.tanh, file = ''):
+        if parameter_list == "none":
+            self.parameters = {"learning_rate": 1, 'L1_term': 0.000, 'L2_term': .001, 'n_epochs': 100, 'batch_size': 10,
+                  'n_hidden_units': 1000, 'activation_function': T.tanh, 'n_layers': 1, "train_p": .6}
+        else:
+            self.parameters = parameter_list
+        self.mlp = ""
 
+    def train(self, x_input, y_input):
         """
         Demonstrate stochastic gradient descent optimization for a multilayer
         perceptron
@@ -49,84 +61,87 @@ class RunMLP(object):
 
         """
 
-        train_set_x = self.features[0]
-        train_set_y = self.targets[0]
-        valid_set_x = self.features[1]
-        valid_set_y = self.targets[1]
-        test_set_x = self.features[2]
-        test_set_y = self.targets[2]
+        learning_rate = self.parameters["learning_rate"]
+        L1_reg = self.parameters["L1_term"]
+        L2_reg = self.parameters["L2_term"]
+        n_epochs = self.parameters["n_epochs"]
+        batch_size = self.parameters["batch_size"]
+        index = T.lscalar('index')  # index to a [mini]batch
+        train_size = x_input.shape[0] * self.parameters["train_p"]
+        max_size = x_input.shape[0] - (x_input.shape[0] % 10)
+        train_set_x = x_input[:train_size, :]
+        train_set_y = y_input[:train_size]
+        valid_set_x = x_input[(train_size + 1 ):max_size, :]
+        valid_set_y = y_input[(train_size + 1):max_size]
 
         #compute number of minibatches for training, validation and testing
         n_train_batches = int(train_set_x.shape[0] / batch_size)
         n_valid_batches = int(valid_set_x.shape[0] / batch_size)
-        n_test_batches = int(test_set_x.shape[0] / batch_size)
+      #  n_test_batches = int(test_set_x.shape[0] / batch_size)
 
-        # allocate symbolic variables for the data
-        index = T.lscalar('index')  # index to a [mini]batch
-        x = T.matrix('x')  #
-        y = T.ivector('y')  # the labels are presented as 1D vector of
-                            # [int] labels
-        number_in = test_set_x.shape[1]
-        test_set_x = theano.shared(test_set_x, 'test_set_x')
-        test_set_y = theano.shared(test_set_y, 'test_set_y')
+
+        number_in = train_set_x.shape[1]
+
         valid_set_x = theano.shared(valid_set_x, 'valid_set_x')
         valid_set_y = theano.shared(valid_set_y, 'valid_set_y')
         train_set_x = theano.shared(train_set_x, 'train_set_x')
         train_set_y = theano.shared(train_set_y, 'train_set_y')
-        rng = numpy.random.RandomState()
-        # construct the MLP class
-        classifier = MLP(
-            rng=rng,
-            input=x,
-            n_in = number_in,
-            n_hidden=n_hidden_units,
-            n_out=2,
-            a_function = activation_function
-        )
 
         # start-snippet-4
         # the cost we minimize during training is the negative log likelihood of
         # the model plus the regularization terms (L1 and L2); cost is expressed
         # here symbolically
-        cost = (
-            classifier.negative_log_likelihood(y)
-            + L1_reg * classifier.L1
-            + L2_reg * classifier.L2_sqr
+        self.mlp = MLP(
+            rng= numpy.random.RandomState(),
+            input=self.x,
+            n_in = number_in,
+            n_hidden=self.parameters["n_hidden_units"],
+            n_out=2,
+            a_function = self.parameters["activation_function"]
         )
+        cost = (
+            self.mlp.negative_log_likelihood(self.y)
+            + L1_reg * self.mlp.L1
+            + L2_reg * self.mlp.L2_sqr
+        )
+
+
+
         # end-snippet-4
         # compiling a Theano function that computes the mistakes that are made
         # by the model on a minibatch
-
+        """
         test_model = theano.function(
             inputs=[index],
-            outputs=classifier.errors(y),
+            outputs=self.mlp.errors(y),
             givens={
-                x: test_set_x[index * batch_size:(index + 1) * batch_size],
-                y: test_set_y[index * batch_size:(index + 1) * batch_size]
+                self.x: test_set_x[index * batch_size:(index + 1) * batch_size],
+                self.y: test_set_y[index * batch_size:(index + 1) * batch_size]
             }
         )
 
         f1_model = theano.function(
             inputs=[index],
-            outputs=classifier.f1_score(y),
+            outputs=self.mlp.f1_score(y),
             givens={
-                x: test_set_x[index * batch_size:(index + 1) * batch_size],
-                y: test_set_y[index * batch_size:(index + 1) * batch_size]
+                self.x: test_set_x[index * batch_size:(index + 1) * batch_size],
+                self.y: test_set_y[index * batch_size:(index + 1) * batch_size]
             }
         )
+        """
         validate_model = theano.function(
             inputs=[index],
-            outputs=classifier.errors(y),
+            outputs=self.mlp.errors(self.y),
             givens={
-                x: valid_set_x[index * batch_size:(index + 1) * batch_size],
-                y: valid_set_y[index * batch_size:(index + 1) * batch_size]
+                self.x: valid_set_x[index * batch_size:(index + 1) * batch_size],
+                self.y: valid_set_y[index * batch_size:(index + 1) * batch_size]
             }
         )
 
         # start-snippet-5
         # compute the gradient of cost with respect to theta (sotred in params)
         # the resulting gradients will be stored in a list gparams
-        gparams = [T.grad(cost, param) for param in classifier.params]
+        gparams = [T.grad(cost, param) for param in self.mlp.params]
 
         # specify how to update the parameters of the model as a list of
         # (variable, update expression) pairs
@@ -137,7 +152,7 @@ class RunMLP(object):
         #    C = [(a1, b1), (a2, b2), (a3, b3), (a4, b4)]
         updates = [
             (param, param - learning_rate * gparam)
-            for param, gparam in zip(classifier.params, gparams)
+            for param, gparam in zip(self.mlp.params, gparams)
         ]
 
         # compiling a Theano function `train_model` that returns the cost, but
@@ -148,8 +163,8 @@ class RunMLP(object):
             outputs=cost,
             updates=updates,
             givens={
-                x: train_set_x[index * batch_size: (index + 1) * batch_size],
-                y: train_set_y[index * batch_size: (index + 1) * batch_size]
+                self.x: train_set_x[index * batch_size: (index + 1) * batch_size],
+                self.y: train_set_y[index * batch_size: (index + 1) * batch_size]
             }
         )
 
@@ -161,7 +176,7 @@ class RunMLP(object):
         print('... training')
 
         # early-stopping parameters
-        patience = 10000  # look as this many examples regardless
+        patience = number_in  # look as this many examples regardless
         patience_increase = 2  # wait this much longer when a new best is
                                # found
         improvement_threshold = 0.995  # a relative improvement of this much is
@@ -215,10 +230,13 @@ class RunMLP(object):
                         best_iter = iter
 
                         # test it on the test set
+                        """
                         test_losses = [test_model(i) for i
                                        in range(n_test_batches)]
                         test_score = numpy.mean(test_losses)
+                        """
 
+                        """
                         f1_scores = [f1_model(i)[0] for i in range(n_test_batches)]
                         f1_score = numpy.mean(f1_scores)
 
@@ -227,29 +245,56 @@ class RunMLP(object):
 
                         recall = [f1_model(i)[2] for i in range(n_test_batches)]
                         recall_avg = numpy.mean(recall)
-
-
-
+                        """
+                        """
                         print(('     epoch %i, minibatch %i/%i, test error of '
                                'best model %f %%') %
                               (epoch, minibatch_index + 1, n_train_batches,
                                test_score * 100.))
-
+                        """
 
                 if patience <= iter:
                     done_looping = True
                     break
-
-        output = "F1 Score Average: {}\nPrecision Average: {}\n" \
-                 "Recall Average: {}\n".format(f1_score, precision_avg, recall_avg)
-        end_time = time.clock()
-        file.write(output)
-        print(output)
+                    """
         print(('Optimization complete. Best validation score of %f %% '
                'obtained at iteration %i, with test performance %f %%') %
               (best_validation_loss * 100., best_iter + 1, test_score * 100.))
-        print(sys.stderr, ('The code for file ' +
-                              os.path.split(__file__)[1] +
-                              ' ran for %.2fm' % ((end_time - start_time) / 60.)))
 
-        return classifier
+              """
+
+    def test(self, x, y):
+        prediction = self.predict(x)
+        f1 = f1_score(y, prediction)
+        precision = precision_score(y, prediction)
+        recall = recall_score(y, prediction)
+        auc = roc_auc_score(y, prediction)
+        accuracy = accuracy_score(y, prediction)
+
+        self.metrics["F1"] = f1
+        self.metrics["Precision"] = precision
+        self.metrics["Recall"] = recall
+        self.metrics["AUC"] = auc
+        self.metrics["Accuracy"] = accuracy
+    def predict(self, x):
+        test_set_x = theano.shared(x, 'test_set_x')
+
+        W = self.mlp.logRegressionLayer.W
+        b = self.mlp.logRegressionLayer.b
+        hl_W = self.mlp.hiddenLayer.W
+        hl_b = self.mlp.hiddenLayer.b
+        input = T.tanh(T.dot(test_set_x, hl_W) + hl_b)
+
+        get_y_pred = theano.function(
+            inputs=[],
+            outputs=T.argmax(T.nnet.softmax(T.dot(input, W) + b), axis=1),
+            on_unused_input='ignore',
+        )
+        return get_y_pred()
+    def __str__(self):
+        return "MLP:\nF1 Score Average: {}\nPrecision Average: {}\n" \
+                 "Recall Average: {}\nAccuracy: {}\nROC: {}\n".format(self.metrics["F1"],
+                                               self.metrics["Precision"],
+                                               self.metrics["Recall"],
+                                               self.metrics["Accuracy"],
+                                              self.metrics["AUC"])

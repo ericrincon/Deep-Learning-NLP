@@ -7,7 +7,7 @@ from os.path import isfile
 from sklearn.cross_validation import KFold
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.feature_extraction.text import TfidfTransformer
-
+import sys
 """
     Class for loading data from .csv file. Call get_training_test_m first to get data loaded form .csv file.
     To get random samples use def create_random_samples
@@ -35,7 +35,10 @@ class DataLoader(object):
         output = "Negative indices: {}\n\n".format(new_documents[:,0])
         return [new_documents, new_targets]
 
-    ""
+    """
+        Returns a train and test sample with features of the data in the x list and the labels in the y list
+        ordered by indices
+    """
     def create_random_samples(self, features, targets, train_p=0, valid_p=0, test_p=0, get_ensemble_test_set=False):
         while not(train_p >= 0 or train_p<=1):
             train_p = input('Please enter a value between 0 and 1 for train percentage: ')
@@ -46,11 +49,13 @@ class DataLoader(object):
 
         n_documents = features.shape[0]
         n_indices = n_documents - (n_documents % 10)
-
+        indices = numpy.arange(n_documents)
+        numpy.random.shuffle(indices)
+        features = features[indices, :]
+        targets = targets[indices]
         #round to nearest 10 throw away other labels
         features = features[:n_indices,:]
         targets = targets[:n_indices]
-
         x = [] #features
         y = [] #target labels
 
@@ -90,13 +95,11 @@ class DataLoader(object):
 
     def cross_fold_valdation(self, features, targets):
         n = features.shape[0]
-        k_fold = KFold(n, 5)
+        k_fold = KFold(n, 5, shuffle=True)
         folds = []
         for train, test in k_fold:
             train_sample = [features[train, :], targets[train]]
             test_sample = [features[test, :], targets[test]]
-            output = "Train indices {}\n\nTest indices {}\n\n".format(train, test)
-            self.file.write(output)
             fold = [train_sample, test_sample]
             folds.append(fold)
         return folds

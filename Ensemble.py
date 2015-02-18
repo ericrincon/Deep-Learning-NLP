@@ -1,84 +1,86 @@
 __author__ = 'eric_rincon'
 
-import theano
 import numpy
-import pickle
-
-import sys
 
 from scipy.stats.mstats import mode
-from sklearn.metrics import roc_auc_score
+
 from DataLoader import DataLoader
-from RunMLP import RunMLP
-from MLP import MLP
-from theano import tensor as T
+from SVM import SVM
+from NeuralNet import NeuralNet
+
+from sklearn.metrics import f1_score
+from sklearn.metrics import precision_score
+from sklearn.metrics import recall_score
+from sklearn.metrics import roc_auc_score
+from sklearn.metrics import accuracy_score
 
 class Ensemble:
-    def __init__(self, n, data, file = ''):
-        self.n_classifiers = n
-        self.classifiers = []
-        self.training_data = data[0]
-        self.test_data = data[1]
-        self.file = file
+    def __init__(self, metric_list="none", ensemble_size=11, classifier_type="svm",
+                 list_of_classifiers=[]):
+        self.n_classifiers = ensemble_size
+        self.type_of_classifier = classifier_type
+        self.classifiers = list_of_classifiers
 
-
-    def train_ensemble(self, mlp_parameters):
-        features = self.training_data[0]
-        target_labels = self.training_data[1]
-        train_percent = .6
-        valid_percent = .2
-        test_percent = .2
-        test_features = self.test_data[0]
-        test_target_labels = self.test_data[1]
-        for n in range(self.n_classifiers):
-            output = "Classifier {} ".format(n)
-            self.file.write(output)
-            data_loader = DataLoader()
-            sampled_data = data_loader.create_random_samples(features=features, targets=target_labels, train_p=.6,valid_p=.2)
-            x = sampled_data[0]
-            x.append(test_features)
-            y = sampled_data[1]
-            y.append(test_target_labels)
-            mlp = RunMLP(x, y, n_layers=mlp_parameters['n_layers'])
-            print("Classifier ", n)
-            classifier = mlp.run(learning_rate=mlp_parameters['learning_rate'], L1_reg=mlp_parameters['L1_term'],
-                                 L2_reg=mlp_parameters['L2_term'], n_epochs=mlp_parameters['n_epochs'],
-                                 batch_size=mlp_parameters['batch_size'],
-                                 n_hidden_units=mlp_parameters['n_hidden_units'],
-                                 activation_function=mlp_parameters['activation_function'], file=self.file)
-            self.classifiers.append(classifier)
-    def test_ensamble(self, data=[]):
-        if not data:
-            data = self.test_data
-
-        test_set_x = theano.shared(data[0], 'test_set_x')
-        test_set_y = data[1]
-
-        assert (not self.classifiers == []), 'There are no classifiers to test. Run train_ensemble first.'
-        predictions = []
+        if metric_list == "none":
+            self.metrics = {"F1": 0, "Accuracy": 0, "AUC": 0, "Precision": 0, "Recall": 0}
+        else:
+            self.metrics = metric_list
+        if list_of_classifiers == []:
+            for n in range(self.n_classifiers):
+                if classifier_type == "svm":
+                    classifier = SVM()
+                else:
+                    classifier = NeuralNet()
+                self.classifiers.append(classifier)
+        else:
+            self.n_classifiers = len(list_of_classifiers)
+    def train(self, x, y):
+        data_loader = DataLoader()
 
         for classifier in self.classifiers:
-            W = classifier.logRegressionLayer.W
-            b = classifier.logRegressionLayer.b
-            hl_W = classifier.hiddenLayer.W
-            hl_b = classifier.hiddenLayer.b
-            input = T.tanh(T.dot(test_set_x, hl_W) + hl_b)
+            sampled_data = data_loader.underSample(x, y)
+            x_sampled = sampled_data[0]
+            y_sampled = sampled_data[1]
+            classifier.train(x_sampled, y_sampled)
 
-            get_y_pred = theano.function(
-                inputs=[],
-                outputs=T.argmax(T.nnet.softmax(T.dot(input, W) + b), axis=1),
-                on_unused_input='ignore',
-            )
-            predictions.append(get_y_pred())
-        prediction_matrix = predictions.pop(0)[:, numpy.newaxis]
-        #Work in progress
-        for prediction in predictions:
-            auc = roc_auc_score(test_set_y, prediction)
-            print('ROC score: ', auc)
-            prediction_matrix = numpy.hstack((prediction_matrix, prediction[:, numpy.newaxis]))
-        predictions = mode(prediction_matrix, 1)
-        n_correct = numpy.sum(numpy.equal(predictions, test_set_y[:, numpy.newaxis])[0])
-        percentage_correct = n_correct/test_set_y.shape[0]
-        output = 'Ensemble percentage correct: {}%\n'.format(percentage_correct*100)
-        self.file.write(output)
-        print(output)
+    def test(self, x, y):
+        assert (not self.classifiers == []), 'There are no classifiers to test. Run train_ensemble first.'
+        prediction = self.predict(x)
+        f1 = f1_score(y, prediction)
+        precision = precision_score(y, prediction)
+        recall = recall_score(y, prediction)
+        auc = roc_auc_score(y, prediction)
+        accuracy = accuracy_score(y, prediction)
+
+        #test classifiers individually
+        for classifier in self.classifiers:
+            classifier.test(x, y)
+
+        self.metrics["F1"] = f1
+        self.metrics["Precision"] = precision
+        self.metrics["Recall"] = recall
+        self.metrics["AUC"] = auc
+        self.metrics["Accuracy"] = accuracy
+
+    def predict(self, x):
+        prediction_matrix = numpy.zeros((x.shape[0], self.n_classifiers))
+        n = 0
+
+        for classifier in self.classifiers:
+            prediction = classifier.predict(x)
+            prediction_matrix[:, n] = prediction
+            n+=1
+        return mode(prediction_matrix, 1)[0].reshape(1, -1)[0]
+
+    def __str__(self):
+        output = "Ensemble:\nF1: {}\nPrecision: {}\n" \
+                 "Recall: {}\nAccuracy: {}\nAUC: {}\n".format(self.metrics["F1"],
+                                               self.metrics["Precision"],
+                                               self.metrics["Recall"],
+                                               self.metrics["Accuracy"],
+                                              self.metrics["AUC"])
+        #Iterate over each classifier in the ensemble and output
+        #their respective metrics
+        for classifier in self.classifiers:
+            output+=classifier.__str__()
+        return output

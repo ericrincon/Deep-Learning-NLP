@@ -23,7 +23,6 @@ class MLP(object):
         self.n_in=n_in,
         self.n_out=n_hidden,
         self.activation=a_function
-        self.metrics = {"F1": 0, "Precision": 0, "Recall": 0, "ROC": 0}
 
         """Initialize the parameters for the multilayer perceptron
 
