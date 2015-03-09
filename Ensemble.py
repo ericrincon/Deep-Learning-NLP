@@ -21,6 +21,7 @@ class Ensemble:
         self.type_of_classifier = classifier_type
         self.classifiers = list_of_classifiers
 
+
         if metric_list == "none":
             self.metrics = {"F1": 0, "Accuracy": 0, "AUC": 0, "Precision": 0, "Recall": 0}
         else:

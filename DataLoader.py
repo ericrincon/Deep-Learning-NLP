@@ -4,31 +4,39 @@ import numpy
 from os import listdir
 from pandas import read_csv
 from os.path import isfile
+
 from sklearn.cross_validation import KFold
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.feature_extraction.text import TfidfTransformer
-import sys
+
+import scipy.sparse
+
 """
     Class for loading data from .csv file. Call get_training_test_m first to get data loaded form .csv file.
     To get random samples use def create_random_samples
 """
 class DataLoader(object):
-    def __init__(self, path='', file = '' ):
-        self.dir_path = path
-        self.file = file
-        if path != '':
-            self.csv_files = self.read_csv_files(self.dir_path)
+    def __init__(self, input_data=''):
+        self.data = input_data
+        self.count_vect = CountVectorizer(stop_words={"english"}, ngram_range=(1, 2), max_features=10000)
+        self.tfidf_transformer = TfidfTransformer()
+
+        if not input_data == '':
+            self.csv_files = self.read_csv_files(self.data)
 
     """
         Returns a new dataset with the over represented portion of the dataset reduced to N number of underrepresented
         label. The over represented label is randomly selected, all of the underrepresented label data is used.
     """
     def underSample(self, features, targets):
+
         indices_for_all_positives = numpy.asarray(targets.nonzero())[0]
-        indices_for_all_negatives = numpy.asarray(numpy.where(targets == 0))[0] # vector indices for the negatives
+        #Vector indices for the negatives
+        indices_for_all_negatives = numpy.asarray(numpy.where(targets == 0))[0]
         positive_element_size = indices_for_all_positives.shape[0]
         random_negative_indices = numpy.random.choice(indices_for_all_negatives, positive_element_size)
         indices = numpy.concatenate([indices_for_all_positives, random_negative_indices])
+
         numpy.random.shuffle(indices)
         new_targets = targets[indices]
         new_documents = features[indices, :]
@@ -39,6 +47,18 @@ class DataLoader(object):
         Returns a train and test sample with features of the data in the x list and the labels in the y list
         ordered by indices
     """
+
+    def shuffle_x_and_y(self, x, y):
+        n = x.shape[0]
+        indices = numpy.arange(n)
+        numpy.random.shuffle(indices)
+        if len(x.shape) == 2:
+            x = x[indices, :]
+            y = y[indices]
+        else:
+            x = x[indices]
+            y = y[indices]
+        return [x, y]
     def create_random_samples(self, features, targets, train_p=0, valid_p=0, test_p=0, get_ensemble_test_set=False):
         while not(train_p >= 0 or train_p<=1):
             train_p = input('Please enter a value between 0 and 1 for train percentage: ')
@@ -46,16 +66,11 @@ class DataLoader(object):
             valid_p = input('Please enter a value between 0 and 1 for validation percentage: ')
         while not(test_p >= 0 or test_p<=1):
             test_p = input('Please enter a value between 0 and 1 for test percentage: ')
-
         n_documents = features.shape[0]
-        n_indices = n_documents - (n_documents % 10)
-        indices = numpy.arange(n_documents)
-        numpy.random.shuffle(indices)
-        features = features[indices, :]
-        targets = targets[indices]
-        #round to nearest 10 throw away other labels
-        features = features[:n_indices,:]
-        targets = targets[:n_indices]
+        limit = features.shape[0] - (n_documents % 10)
+        data = self.shuffle_x_and_y(features, targets)
+        features = data[0][:limit, :]
+        targets = data[1][:limit]
         x = [] #features
         y = [] #target labels
 
@@ -103,20 +118,24 @@ class DataLoader(object):
             fold = [train_sample, test_sample]
             folds.append(fold)
         return folds
-    def get_feature_matrix(self, columns):
+    def get_feature_matrix(self, columns, data="", path=""):
         #feature_matrix: the return value that will contain all the documents with the appropriate
         #value concatenated to each respective element
-        feature_matrix = []
 
+        if isinstance(data, type("")):
+            data = self.csv_files
+        else:
+            data = [data]
+        feature_matrix = []
+        targets = []
         #True: wil get the feature matrix of the documents
         #False: will return the column requested
-
         y_i = columns.pop('y')
         keys = list(columns.keys())
         n = 0
 
         #iterate over all csv files provided
-        for csv_file in self.csv_files:
+        for i, csv_file in enumerate(data):
             n_rows = csv_file.shape[0]
 
             #create a row that represents one document and contains all features
@@ -139,51 +158,80 @@ class DataLoader(object):
 
                     feature_vector += features
                 feature_matrix.append(numpy.asarray(feature_vector))
-        return [numpy.asarray(feature_matrix), numpy.asarray(csv_file.iloc[:, y_i])]
+
+            y_to_append = numpy.asarray(csv_file.iloc[:, y_i])
+            if i > 0:
+                targets = numpy.concatenate((targets, y_to_append))
+            else:
+                targets = y_to_append
+        targets = numpy.asarray(targets).flatten()
+        columns.update({'y': 6})
+
+        #Convert y vector into int format and relabel -1 to 0 for Theano
+        targets = numpy.asarray(targets)
+        targets = numpy.intc(targets)
+        targets[targets == -1] = 0
+
+        return [numpy.asarray(feature_matrix), targets]
+   #     return [numpy.asarray(feature_matrix), numpy.asarray(csv_file.iloc[:, y_i])]
     """
         Main def to call to get data from csv file and outputs in [x_train_tfidf, y].
         x_train_tfidf: is a features matrix that is the n examples by n features. The features are created by
         scikit-learn's tfidf
         y: is vector representing all the corresponding labels labeled 0 or 1.
     """
-    def get_training_test_m(self, path, indices, sparse=False):
-        data = self.get_feature_matrix(indices)
+    def get_train_test_data(self, data, sparse=False, add_index_vector=True):
+        """
+        if isinstance(data, type("")):
+            data = self.get_feature_matrix(indices)
+        else:
+            data = self.get_feature_matrix(data=[data], columns=indices)
+        """
         feature_matrix = data[0]
         y = data[1]
-        count_vect = CountVectorizer()
-        x_train_counts = count_vect.fit_transform(feature_matrix)
-        tfidf_transformer = TfidfTransformer()
-        x_train_tfidf = tfidf_transformer.fit_transform(x_train_counts)
-
+        x_train_counts = self.count_vect.fit_transform(feature_matrix)
+        x_train_tfidf = self.tfidf_transformer.fit_transform(x_train_counts)
         if not sparse:
             x_train_tfidf = x_train_tfidf.todense()
-        x_train_tfidf = numpy.asarray(x_train_tfidf)
 
-        #Convert y vector into int format and relabel -1 to 0 for Theano
-        y = numpy.intc(y)
-        y[y == -1] = 0
-        n = feature_matrix.shape[0]
-        indice_vector = numpy.asarray([range(n)]).T
-        x_train_tfidf = numpy.hstack((indice_vector, x_train_tfidf))
+        if add_index_vector:
+            n = feature_matrix.shape[0]
+            index_vector = numpy.asarray([range(n)]).T
+
+            if not sparse:
+                x_train_tfidf = numpy.hstack((index_vector, x_train_tfidf))
+            else:
+                x_train_tfidf = scipy.sparse.hstack((index_vector, x_train_tfidf))
         return [x_train_tfidf, y]
+    def transform(self, x, sparse=False):
+        counts = self.count_vect.transform(x)
+        tfidf = self.tfidf_transformer.transform(counts)
 
+        if sparse:
+            return tfidf
+        else:
+            return tfidf.todense()
     """Takes in a parameter folder, reads all csv files and then returns a list containing the csv files.
     """
     def get_path(self):
         return self.dir_path
-    def read_csv_files(self, path):
+    def read_csv_files(self, input_data, read_all=False):
         csv_file_data = []
 
-        if isfile(path):
-            csv_file_data.append(read_csv(path))
+        if isinstance(input_data, list):
+            for csv_file_path in input_data:
+                if '.csv' in csv_file_path:
+                    csv_data = read_csv(csv_file_path)
+                    csv_file_data.append(csv_data)
+        elif isfile(input_data) and not read_all:
+            csv_file_data.append(read_csv(input_data))
 
             return csv_file_data
         else:
-            csv_file_paths = listdir(path)
-
+            csv_file_paths = listdir(input_data)
             for csv_file_path in csv_file_paths:
                 if '.csv' in csv_file_path:
-                    csv_data = read_csv(csv_file_path)
+                    csv_data = read_csv(input_data + csv_file_path)
                     csv_file_data.append(csv_data)
 
             return csv_file_data

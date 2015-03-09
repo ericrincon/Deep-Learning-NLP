@@ -18,16 +18,14 @@ class SVM:
             self.metrics = metric_list
 
         if parameter_list == "none":
-            c_range = 10. ** numpy.arange(-2, 9)
-            gamma_range = 10. ** numpy.arange(-5, 4)
+            c_range = 10. ** numpy.arange(-2, 3)
+            gamma_range = 10. ** numpy.arange(-3, 1)
             self.parameters = {"kernel": "rbf", "c_range": c_range, "gamma_range": gamma_range, "score_model":"f1"}
         else:
             self.parameters = parameter_list
         svm_classifier = svm.SVC(kernel=self.parameters["kernel"])
         self.classifier = GridSearchCV(svm_classifier, scoring=self.parameters["score_model"], param_grid=dict(
-            C=self.parameters['c_range'], gamma=self.parameters["gamma_range"]),
-                                       n_jobs=-1
-        )
+                        C=self.parameters['c_range'], gamma=self.parameters["gamma_range"]),n_jobs=-1)
 
     def train(self, x, y):
         self.classifier.fit(x, y)
@@ -49,8 +47,9 @@ class SVM:
         return self.classifier.predict(x)
     def __str__(self):
         return "SVM:\nF1 Score Average: {}\nPrecision Average: {}\n" \
-                 "Recall Average: {}\nError: {}\nROC: {}\n".format(self.metrics["F1"],
+                 "Recall Average: {}\nError: {}\nROC: {}\nHyperParameters: {}\n".format(self.metrics["F1"],
                                                self.metrics["Precision"],
                                                self.metrics["Recall"],
                                                self.metrics["Accuracy"],
-                                              self.metrics["AUC"])
+                                              self.metrics["AUC"],
+                                              self.parameters)

@@ -95,9 +95,9 @@ class NeuralNet:
             rng= numpy.random.RandomState(),
             input=self.x,
             n_in = number_in,
-            n_hidden=self.parameters["n_hidden_units"],
             n_out=2,
-            a_function = self.parameters["activation_function"]
+            a_function = self.parameters["activation_function"],
+            n_hidden_sizes=self.parameters["n_layers"]
         )
         cost = (
             self.mlp.negative_log_likelihood(self.y)
@@ -105,30 +105,10 @@ class NeuralNet:
             + L2_reg * self.mlp.L2_sqr
         )
 
-
-
         # end-snippet-4
         # compiling a Theano function that computes the mistakes that are made
         # by the model on a minibatch
-        """
-        test_model = theano.function(
-            inputs=[index],
-            outputs=self.mlp.errors(y),
-            givens={
-                self.x: test_set_x[index * batch_size:(index + 1) * batch_size],
-                self.y: test_set_y[index * batch_size:(index + 1) * batch_size]
-            }
-        )
 
-        f1_model = theano.function(
-            inputs=[index],
-            outputs=self.mlp.f1_score(y),
-            givens={
-                self.x: test_set_x[index * batch_size:(index + 1) * batch_size],
-                self.y: test_set_y[index * batch_size:(index + 1) * batch_size]
-            }
-        )
-        """
         validate_model = theano.function(
             inputs=[index],
             outputs=self.mlp.errors(self.y),
@@ -138,10 +118,19 @@ class NeuralNet:
             }
         )
 
+        training_errors = theano.function(
+            inputs=[index],
+            outputs=self.mlp.errors(self.y),
+            givens={
+                self.x: train_set_x[index * batch_size:(index + 1) * batch_size],
+                self.y: train_set_y[index * batch_size:(index + 1) * batch_size]
+            }
+        )
+
         # start-snippet-5
         # compute the gradient of cost with respect to theta (sotred in params)
         # the resulting gradients will be stored in a list gparams
-        gparams = [T.grad(cost, param) for param in self.mlp.params]
+        parameter_gradients = [T.grad(cost, param) for param in self.mlp.params]
 
         # specify how to update the parameters of the model as a list of
         # (variable, update expression) pairs
@@ -150,10 +139,16 @@ class NeuralNet:
         # same length, zip generates a list C of same size, where each element
         # is a pair formed from the two lists :
         #    C = [(a1, b1), (a2, b2), (a3, b3), (a4, b4)]
+        updates = []
+        """
         updates = [
-            (param, param - learning_rate * gparam)
-            for param, gparam in zip(self.mlp.params, gparams)
+            (param, param - learning_rate * parameter_gradients)
+            for param, parameter_gradients in zip(self.mlp.params, parameter_gradients)
         ]
+        """""
+
+        for param, parameter_gradients in zip(self.mlp.params, parameter_gradients):
+            updates.append((param, param - learning_rate * parameter_gradients))
 
         # compiling a Theano function `train_model` that returns the cost, but
         # in the same time updates the parameter of the model based on the rules
@@ -204,19 +199,21 @@ class NeuralNet:
                 iter = (epoch - 1) * n_train_batches + minibatch_index
 
                 if (iter + 1) % validation_frequency == 0:
+                    training_losses = [training_errors(i) for i
+                                        in range(n_train_batches)]
+                    this_training_loss = numpy.mean(training_losses)
                     # compute zero-one loss on validation set
                     validation_losses = [validate_model(i) for i
                                          in range(n_valid_batches)]
                     this_validation_loss = numpy.mean(validation_losses)
-                    print(
-                        'epoch %i, minibatch %i/%i, validation error %f %%' %
-                        (
-                            epoch,
-                            minibatch_index + 1,
-                            n_train_batches,
-                            this_validation_loss * 100.
-                        )
+                    output = "epoch {}, minibatch {}/{}, training error {}, validation error {}".format(
+                        epoch,
+                        (minibatch_index + 1),
+                        n_train_batches,
+                        this_training_loss,
+                        this_validation_loss
                     )
+                    print(output)
                     # if we got the best validation score until now
                     if this_validation_loss < best_validation_loss:
                         #improve patience if loss improvement is good enough
@@ -276,25 +273,36 @@ class NeuralNet:
         self.metrics["Recall"] = recall
         self.metrics["AUC"] = auc
         self.metrics["Accuracy"] = accuracy
-    def predict(self, x):
-        test_set_x = theano.shared(x, 'test_set_x')
 
+    def predict(self, x):
+        #Create a theano shared variable for the input x: the data to be predicted
+        test_set_x = theano.shared(x, 'test_set_x')
+        input = test_set_x
+        #Iterate over all the hidden layers in the MLP
+        for i_hidden_layer, hidden_layer in enumerate(self.mlp.hidden_layers):
+            hl_W = hidden_layer.W
+            hl_b = hidden_layer.b
+
+            weight_matrix = T.tanh(T.dot(input, hl_W) + hl_b)
+            input = weight_matrix
+
+        #Get the weights and bias from the softmax output layer
         W = self.mlp.logRegressionLayer.W
         b = self.mlp.logRegressionLayer.b
-        hl_W = self.mlp.hiddenLayer.W
-        hl_b = self.mlp.hiddenLayer.b
-        input = T.tanh(T.dot(test_set_x, hl_W) + hl_b)
 
-        get_y_pred = theano.function(
+        #compile the thenao function for calculating the outputs from the softmax layer
+        get_y_prediction = theano.function(
             inputs=[],
-            outputs=T.argmax(T.nnet.softmax(T.dot(input, W) + b), axis=1),
+            outputs=T.argmax(T.nnet.softmax(T.dot(weight_matrix, W) + b), axis=1),
             on_unused_input='ignore',
         )
-        return get_y_pred()
+        return get_y_prediction()
+
     def __str__(self):
         return "MLP:\nF1 Score Average: {}\nPrecision Average: {}\n" \
-                 "Recall Average: {}\nAccuracy: {}\nROC: {}\n".format(self.metrics["F1"],
+                 "Recall Average: {}\nAccuracy: {}\nROC: {}\nHyperParameters: {}\n".format(self.metrics["F1"],
                                                self.metrics["Precision"],
                                                self.metrics["Recall"],
                                                self.metrics["Accuracy"],
-                                              self.metrics["AUC"])
+                                              self.metrics["AUC"],
+                                              self.parameters)
