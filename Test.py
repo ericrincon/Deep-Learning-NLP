@@ -106,176 +106,13 @@ def test_mlp():
     mlp.test(data[0][1][:, 1:], data[1][1])
     print(mlp)
 
-def transfer_learning2():
-    path = 'datasets/'
-    names = {1: 'title', 4: 'abstract', 5:'mesh', 'y': 6}
-
-    #get all the data paths and shuffle them randomly
-    files = [f for f in listdir(path) if isfile(join(path,f))]
-    #remove the first element of files because of OSX file .DS_Store that exists in every directory
-    files.pop(0)
-    indices = list(range(len(files)))
-    shuffle(indices)
-    #get random dataset off the data list and use as held out data to train at the end
-    held_out_data_path = files.pop()
-    held_out_data_loader = DataLoader(path+held_out_data_path)
-    held_out_data = held_out_data_loader.get_feature_matrix(names)
-    #split the held out data into train and test data
-    held_out_data_x = held_out_data[0]
-    held_out_data_y = held_out_data[1]
-
-    shuffled_held_out_data_train_data = held_out_data_loader.shuffle_x_and_y(held_out_data_x, held_out_data_y)
-    n_documents = held_out_data_x.shape[0]
-    limit = n_documents - (n_documents % 10)
-    x = shuffled_held_out_data_train_data[0]
-    y = shuffled_held_out_data_train_data[1]
-    limit = n_documents * .8
-    held_out_train_x = x[:limit]
-    held_out_test_x = x[limit+1:]
-    held_out_train_y = y[:limit]
-    held_out_test_y = y[limit + 1:]
-
-    #load the n-1 data
-    data_loader = DataLoader(path)
-    data = data_loader.get_feature_matrix({1: 'title', 4: 'abstract', 5:'mesh', 'y': 6})
-    x = data[0]
-    y = data[1]
-    shuffled_train_data = data_loader.shuffle_x_and_y(x, y)
-    n_documents = x.shape[0]
-    limit = n_documents - (n_documents % 10)
-    x = shuffled_train_data[0]
-    y = shuffled_train_data[1]
-    limit = n_documents * .8
-    train_x = x[:limit]
-    test_x = x[limit+1:]
-    train_y = y[:limit]
-    test_y = y[limit + 1:]
-
-    mlp_train_x = train_x
-    mlp_train_y = train_y
-
-    mlp_test_x = test_x
-    mlp_test_y = test_y
-
-
-
-
-    #Get the feature matrix created by sklearn count vectorizer and tfidf vectorizer features should be 50K + 1
-    #due to concatenated vector that corresponds to original indices of the data
-    target_domain_start = train_x.shape[0] + 1
-    train_x = numpy.concatenate((train_x, held_out_train_x))
-    train_y = numpy.concatenate((train_y, held_out_train_y))
-    data = data_loader.get_train_test_data([train_x, train_y])
-
-    indices_target_domain = data[0][target_domain_start:, 0]
-    [train_x, train_y] = data_loader.underSample(data[0], data[1])
-    test_x = data_loader.transform(test_x).todense()
-    indices_target_domain_exists = numpy.in1d(train_x[:, 0],indices_target_domain)
-    indices_target_domain = numpy.squeeze(numpy.where(indices_target_domain_exists == True))
-
-    target_domain_train_x = train_x[indices_target_domain,:]
-    train_y_target_domain = train_y[indices_target_domain]
-    train_x = numpy.delete(train_x, indices_target_domain, 0)
-    train_y = numpy.delete(train_y, indices_target_domain)
-    print(train_x[:, 0].shape)
-    print(mlp_train_x.shape)
-
-    mlp_train_x = mlp_train_x[train_x[:, 0].astype(int)]
-    mlp_train_y = mlp_train_y[train_x[:, 0].astype(int)]
-
-    #Save the indices for train_x
-    train_x_indices = train_x[:, 1:]
-
-    #Remove the 1st column from train_x and target_domain_train_x since it equals the indices first used
-    train_x = train_x[:, 1:]
-    target_domain_train_x = target_domain_train_x[:, 1:]
-
-    #Create the augmented input space for domain adaptation
-    #EXAMPLE: For a 2 domain set
-    #Input function: phi(x) = <x, x, 0>
-    #Target function: phi(x) = <x, 0, x>
-    r_x = train_x.shape[0]
-    c_x = train_x.shape[1]
-
-    #Create N copies of data for augmented feature matrix for the source domain
-    #In this case it would be 14 domain sources
-    augmented_train_x = train_x
-    zero_matrix_x = numpy.zeros((r_x, c_x))
-
-
-    r_target_x = target_domain_train_x.shape[0]
-    c_target_x = target_domain_train_x.shape[1]
-
-    augmented_train_target_x = target_domain_train_x
-    zero_matrix_target_x = numpy.zeros((r_target_x, c_target_x))
-
-    i = 0
-    r = test_x.shape[0]
-    c = test_x.shape[1]
-    zero_test_matrix = numpy.zeros((r, c))
-    augmented_test_x = test_x
-    for domain_i in range(len(files)):
-        augmented_train_x = numpy.hstack((augmented_train_x, train_x))
-        augmented_train_target_x = numpy.hstack((augmented_train_target_x, zero_matrix_target_x))
-        augmented_test_x = numpy.hstack((augmented_test_x, zero_test_matrix))
-    augmented_test_x = numpy.hstack((augmented_test_x, test_x))
-    augmented_train_target_x = numpy.hstack((augmented_train_target_x, target_domain_train_x))
-    augmented_train_x = numpy.hstack((augmented_train_x, zero_matrix_x))
-    final_augmented_matrix = numpy.vstack((augmented_train_target_x, augmented_train_x))
-    final_train_y = numpy.hstack((train_y_target_domain, train_y))
-   # svm = SVM()
-    #svm.train(final_augmented_matrix, final_train_y)
-    #svm.test(augmented_test_x, test_y)
-    #print(svm)
-    #MLP train
-
-    #pop one dataset off the data list to setup for numpy vstack()
-
-    #transform the stacked data matrix into a feature matrix with bag of words and tfidf then undersample the negative
-    #  examples
-    names = {1: 'title', 4: 'abstract', 5:'mesh', 'y': 6}
-    mlp_parameters = {"learning_rate": 1, 'L1_term': 0.000, 'L2_term': .001, 'n_epochs': 75, 'batch_size': 20,
-                       'activation_function': T.tanh, 'train_p':.6, 'n_layers': [2]}
-    mlp_data_loader = DataLoader()
-    [mlp_train_x, mlp_train_y] = mlp_data_loader.get_train_test_data([mlp_train_x, mlp_train_y], add_index_vector=False)
-    mlp_train_x = mlp_train_x[:, 1:]
-    print(mlp_train_x.shape)
-    mlp_test_x = mlp_data_loader.transform(mlp_test_x).todense()
-    classifier = NeuralNet(parameter_list=mlp_parameters)
-
-    classifier.train(mlp_train_x, mlp_train_y)
-    classifier.test(mlp_test_x, mlp_test_y)
-    print(classifier)
-    #get the weights and bias values of the trained MLPs hidden layer
-    W = classifier.mlp.hidden_layers[0].W
-    b = classifier.mlp.hidden_layers[0].b
-
-    #Get bag of words and tfidf feature vector from held out data set
-    transformed_input_train_x = data_loader.transform(held_out_train_x).todense()
-    print(transformed_input_train_x.shape)
-    transformed_input_train = [transformed_input_train_x, held_out_train_y]
-    transformed_input_test_x = data_loader.transform(held_out_test_x).todense()
-    transformed_input_test = [transformed_input_test_x, held_out_test_y]
-    input_train_x = theano.sha
-    #Transform the feature vectors of the held out data to the learned hidden layer features of the previous
-    #MLP trained with all n-1 datasets
-    a_function = mlp_parameters['activation_function']
-    input_train = a_function(T.dot(transformed_input_train[0], W) + b)
-    input_test = a_function(T.dot(transformed_input_test[0], W) + b)
-
-    input_train = transformed_input_train[:3360, :]
-
-    #set up and train the mlp on the held out dataset
-    mlp_parameters = {"learning_rate": 1, 'L1_term': 0.000, 'L2_term': .001, 'n_epochs': 75, 'batch_size': 20,
-                       'activation_function': T.tanh, 'train_p':.6, 'n_layers': [1000]}
-    transfer_mlp = NeuralNet(parameter_list=mlp_parameters)
-    transfer_mlp.train(input_train, held_out_train_y)
-    transfer_mlp.test(input_test[:, 1:], held_out_test_y)
-    print(transfer_mlp)
-
 def transfer_learning():
     path = 'datasets/'
     names = {1: 'title', 4: 'abstract', 5: 'mesh', 'y': 6}
+    svm_wda_metrics_list = []
+    svm_metrics_list = []
+    perceptron_metrics_list = []
+    perceptron_modified_metrics_list = []
 
     #get all the data paths and shuffle them randomly
     files = [f for f in listdir(path) if isfile(join(path,f))]
@@ -289,140 +126,238 @@ def transfer_learning():
 
     #Get one file out of the csv files in the dataloader use this as the held out domain
     held_out_domain = data_loader.csv_files.pop()
+
+    #Get the feature representation of the held out data
     held_out_x, held_out_y = data_loader.get_feature_matrix(names, held_out_domain)
-    held_out_x, held_out_y = data_loader.get_train_test_data([held_out_x, held_out_y], True, False)
-
-    #Get the total number of domains i.e., the number of files with documents
-    n_source_domains = len(files)
-
-    #Read the n-1 csv files
-    source_x, source_y = data_loader.get_feature_matrix(names)
-    source_x = data_loader.transform(source_x, True)
-    previous_domain_sizes = 0
-
-    current_domain_number = 0
-
-    domain_size = data_loader.csv_files.pop().shape[0]
-    i_start = previous_domain_sizes
-    i_stop = domain_size
-    previous_domain_sizes = domain_size
-    source_domain_x = source_x[i_start:i_stop, :]
-    source_domain_y = source_y[i_start:i_stop]
-    source_domain_x, source_domain_y = data_loader.underSample(source_domain_x, source_domain_y)
-    current_domain_number = 2
-    current_domain_zero_matrix = numpy.zeros((source_domain_x.shape[0], source_domain_x.shape[1]))
-
-    #Create the first part of the augmented feature matrix
-    for i in range(n_source_domains - 1):
-        source_domain_x = scipy.sparse.hstack((source_domain_x, current_domain_zero_matrix))
-
-    for csv_file in data_loader.csv_files:
-        domain_size = csv_file.shape[0]
-        i_start = previous_domain_sizes
-
-        i_stop = domain_size + previous_domain_sizes
-        previous_domain_sizes += domain_size
-        current_domain_x = source_x[i_start + 1:i_stop,:]
-        current_domain_y = source_y[i_start + 1:i_stop]
-
-        current_undersampled_domain_x, current_undersampled_domain_y = data_loader.underSample(
-            current_domain_x, current_domain_y)
-
-        current_domain_r = current_undersampled_domain_x.shape[0]
-        current_domain_c = current_undersampled_domain_x.shape[1]
-
-        current_domain_zero_matrix = numpy.zeros((current_domain_r, current_domain_c))
-
-        current_domain_matrix = current_undersampled_domain_x
-
-        for i in range(len(files) - 1 ):
-
-            if i == current_domain_number:
-                current_domain_matrix = scipy.sparse.hstack((current_domain_matrix,
-                    current_undersampled_domain_x))
-            else:
-                current_domain_matrix = scipy.sparse.hstack((current_domain_matrix,
-                    current_domain_zero_matrix))
-        current_domain_number += 1
-        source_domain_x = scipy.sparse.vstack((source_domain_x, current_domain_matrix))
-        source_domain_y = numpy.hstack((source_domain_y, current_undersampled_domain_y))
-
-
-    target_source = held_out_x
-    target_source_zero_matrix = numpy.zeros((target_source.shape[0], target_source.shape[1]))
-
-    for i in range(len(files) - 1):
-        if not i == (len(files) - 1):
-            target_source = scipy.sparse.hstack((target_source, target_source_zero_matrix))
-        else:
-            target_source = scipy.sparse.hstack((target_source, held_out_x))
-
-    target_split = round(held_out_y.shape[0] * .7)
-    train_target_x = target_source.tocsr()[:target_split, :]
-
-    index_stop = source_domain_x.shape[0] - (source_domain_x.shape[0] % 10)
-
-    mlp_train_x = source_domain_x.tocsr()[:index_stop, :]
-
-    mlp_train_x = mlp_train_x.tocsc()[:, :10000].todense()
-    mlp_train_y = source_domain_y[:index_stop]
-
-    train_x = scipy.sparse.vstack((source_domain_x, train_target_x))
-    train_y = numpy.hstack((source_domain_y, held_out_y[:target_split]))
-
-    test_x = target_source.tocsr()[target_split + 1:, :]
-    test_y = held_out_y[target_split + 1:]
-
-    perceptron_train_x = train_target_x.tocsc()[:, :10000].todense()
-    perceptron_train_y = held_out_y[:target_split]
-
-    perceptron_test_x = target_source.tocsr()[target_split + 1:, :]
-    perceptron_test_x = perceptron_test_x.tocsc()[:, :10000].todense()
-    perceptron_test_y = held_out_y[target_split + 1:]
-
-    svm = SVM()
-    svm.train(train_x, train_y)
-    svm.test(test_x, test_y)
-    print(svm)
+    #Create the folds for the held out data in this case the default 5
+    folds = data_loader.cross_fold_valdation(held_out_x, held_out_y)
 
     mlp_parameters = {"learning_rate": 1.2, 'L1_term': 0.000, 'L2_term': .0001, 'n_epochs': 100, 'batch_size': 20,
-                       'activation_function': T.tanh, 'train_p':.6, 'n_layers': [1500]}
+                           'activation_function': T.tanh, 'train_p':.6, 'n_layers': [1500]}
 
-    classifier = NeuralNet(parameter_list=mlp_parameters)
-    classifier.train(mlp_train_x, mlp_train_y)
-    #get the weights and bias values of the trained MLPs hidden layer
-    W = classifier.mlp.hidden_layers[0].W
-    b = classifier.mlp.hidden_layers[0].b
+    #Start the 5 fold cross validation
+    for n_fold, fold in enumerate(folds):
+        print("Fold {}: ".format(n_fold))
+        #Each sample is a list that contains the x and y for the classifier
+        #Typically fold[0] would be the train sample but because it is switched for
+        #testing the effectiveness of the domain adaptation
+        train_sample = fold[1]
+        test_sample = fold[0]
 
-    #Transform the feature vectors of the held out data to the learned hidden layer features of the previous
-    #MLP trained with all n-1 datasets
+        #These are the original copies to be copied over the augmented feature matrix
+        #Each sample contains the text and y labels from the data before it is put into the sklearn count vectorizer
+        target_source_pre_train_x = train_sample[0]
+        target_source_train_y = train_sample[1]
+        target_source_pre_test_x = test_sample[0]
+        target_source_test_y = test_sample[1]
 
-    a_function = mlp_parameters['activation_function']
-    perceptron_train_x = theano.shared(perceptron_train_x)
-    perceptron_test_x = theano.shared(perceptron_test_x)
-    transformation_function = theano.function(
-        inputs=[],
-        outputs=[a_function(T.dot(perceptron_train_x, W) + b),
-                 a_function(T.dot(perceptron_test_x, W) + b)],
-        on_unused_input='ignore',
+        #Get the bag of words representation of the small 20% target source data and transform the other 80%
+        #of the data.
+        target_source_train_x_copy = data_loader.get_transformed_features(target_source_pre_train_x, True, False)
+        target_source_test_x_copy = data_loader.transform(target_source_pre_test_x, True)
 
-    )
+        #Read the n-1 csv files
+        source_x, source_y = data_loader.get_feature_matrix(names)
+        #Get the total number of domains i.e., the number of files with documents
+        n_source_domains = len(files)
 
-    transformed_perceptron_train_x, transformed_perceptron_test_x = transformation_function()
+        source_x = data_loader.transform(source_x, True)
+        previous_domain_sizes = 0
+
+        #Used to keep track of where to put the feature vector x in the augmented feature matrix
+        current_domain_number = 0
+
+        domain_size = data_loader.csv_files.pop().shape[0]
+        i_start = previous_domain_sizes
+        i_stop = domain_size
+        previous_domain_sizes = domain_size
+        source_domain_x = source_x[i_start:i_stop, :]
+        source_domain_y = source_y[i_start:i_stop]
+        source_domain_x, source_domain_y = data_loader.underSample(source_domain_x, source_domain_y)
+        current_domain_number = 2
+        current_domain_zero_matrix = numpy.zeros((source_domain_x.shape[0], source_domain_x.shape[1]))
+
+        #Create the first part of the augmented feature matrix
+        for i in range(n_source_domains - 1):
+            source_domain_x = scipy.sparse.hstack((source_domain_x, current_domain_zero_matrix))
+
+        #Create the rest of the augmented feature matrix and stack on to the first part
+        for csv_file in data_loader.csv_files:
+            domain_size = csv_file.shape[0]
+            i_start = previous_domain_sizes
+
+            i_stop = domain_size + previous_domain_sizes
+            previous_domain_sizes += domain_size
+            current_domain_x = source_x[i_start + 1:i_stop,:]
+            current_domain_y = source_y[i_start + 1:i_stop]
+
+            current_undersampled_domain_x, current_undersampled_domain_y = data_loader.underSample(
+                current_domain_x, current_domain_y)
+
+            current_domain_r = current_undersampled_domain_x.shape[0]
+            current_domain_c = current_undersampled_domain_x.shape[1]
+
+            current_domain_zero_matrix = numpy.zeros((current_domain_r, current_domain_c))
+
+            current_domain_matrix = current_undersampled_domain_x
+
+            for i in range(len(files) - 1 ):
+
+                if i == current_domain_number:
+                    current_domain_matrix = scipy.sparse.hstack((current_domain_matrix,
+                        current_undersampled_domain_x))
+                else:
+                    current_domain_matrix = scipy.sparse.hstack((current_domain_matrix,
+                        current_domain_zero_matrix))
+            current_domain_number += 1
+            source_domain_x = scipy.sparse.vstack((source_domain_x, current_domain_matrix))
+            source_domain_y = numpy.hstack((source_domain_y, current_undersampled_domain_y))
 
 
-    perceptron = Perceptron(penalty="l2", n_iter=100)
-    perceptron.fit(transformed_perceptron_train_x, perceptron_train_y)
-    prediction = perceptron.predict(transformed_perceptron_test_x)
-    scores = []
-    scores.append(f1_score(perceptron_test_y, prediction))
-    scores.append(precision_score(perceptron_test_y, prediction))
-    scores.append(recall_score(perceptron_test_y, prediction))
-    scores.append(roc_auc_score(perceptron_test_y, prediction))
-    scores.append(accuracy_score(perceptron_test_y, prediction))
+        target_source_train_x = target_source_train_x_copy
+        target_source_test_x = target_source_test_x_copy
+        #Create the augmented matrix for the target data i.e. phi(x) = <x,0.....,0,x>
+        target_source_zero_matrix_train = numpy.zeros((target_source_train_x.shape[0], target_source_train_x.shape[1]))
+        target_source_zero_matrix_test = numpy.zeros((target_source_test_x.shape[0], target_source_test_x.shape[1]))
 
-    print("perceptron scores")
-    for score in scores:
-        print(score)
+        for i in range(len(files) - 1):
+            if not i == (len(files) - 1):
+                target_source_train_x = scipy.sparse.hstack((target_source_train_x, target_source_zero_matrix_train))
+                target_source_test_x = scipy.sparse.hstack((target_source_test_x, target_source_zero_matrix_test))
+            else:
+                target_source_train_x = scipy.sparse.hstack((target_source_train_x, target_source_train_x_copy))
+                target_source_test_x = scipy.sparse.hstack((target_source_test_x, target_source_test_x_copy))
+
+
+        #Shave some random examples because of SGD for the MLP and the batch size of 10, 20, etc.
+        index_stop = source_domain_x.shape[0] - (source_domain_x.shape[0] % 10)
+
+        mlp_train_x = source_domain_x.tocsr()[:index_stop, :]
+
+        mlp_train_x = mlp_train_x.tocsc()[:, :10000].todense()
+        mlp_train_y = source_domain_y[:index_stop]
+
+        train_x = scipy.sparse.vstack((source_domain_x, target_source_train_x))
+        train_y = numpy.hstack((source_domain_y, target_source_train_y))
+
+        test_x = target_source_test_x
+        test_y = target_source_test_y
+
+        perceptron_train_x = target_source_train_x_copy.todense()
+        perceptron_train_y = target_source_train_y
+
+        perceptron_test_x = target_source_test_x.todense()
+        perceptron_test_y = target_source_test_y
+
+
+        #SVM with the augmented feature matrix for domain adaptation
+        svm_wda = SVM()
+        svm_wda.train(train_x, train_y)
+        svm_wda.test(test_x, test_y)
+        print("SVM with domain adaptation metrics:")
+        print(svm_wda)
+        print("\n")
+        svm_wda_metrics_list.append(svm_wda.metrics)
+
+        #SVM without the domain adaptation
+        svm = SVM()
+        svm.train(target_source_train_x_copy, target_source_train_y)
+        svm.test(target_source_test_x_copy, target_source_test_y)
+        print("SVM without domain adaptation")
+        print(svm)
+        print("\n")
+        svm_metrics_list.append(svm.metrics)
+
+        classifier = NeuralNet(parameter_list=mlp_parameters)
+        classifier.train(mlp_train_x, mlp_train_y)
+        #get the weights and bias values of the trained MLPs hidden layer
+        W = classifier.mlp.hidden_layers[0].W
+        b = classifier.mlp.hidden_layers[0].b
+
+        #Transform the feature vectors of the held out data to the learned hidden layer features of the previous
+        #MLP trained with all n-1 datasets
+
+        a_function = mlp_parameters['activation_function']
+        perceptron_train_x = theano.shared(perceptron_train_x)
+        perceptron_test_x = theano.shared(perceptron_test_x)
+        transformation_function = theano.function(
+            inputs=[],
+            outputs=[a_function(T.dot(perceptron_train_x, W) + b),
+                     a_function(T.dot(perceptron_test_x, W) + b)],
+            on_unused_input='ignore',
+
+        )
+
+        transformed_perceptron_train_x, transformed_perceptron_test_x = transformation_function()
+        modified_transformed_perceptron_train_x = numpy.hstack((transformed_perceptron_train_x, target_source_train_x_copy.todense()))
+        modified_transformed_perceptron_test_x = numpy.hstack((transformed_perceptron_test_x, target_source_test_x_copy.todense()))
+
+        perceptron = Perceptron(penalty="l2", n_iter=100)
+        perceptron.fit(transformed_perceptron_train_x, perceptron_train_y)
+        prediction = perceptron.predict(transformed_perceptron_test_x)
+
+
+        perceptron_metrics = {
+            "f1": f1_score(perceptron_test_y, prediction),
+            "precision": precision_score(perceptron_test_y, prediction),
+            "recall": recall_score(perceptron_test_y, prediction),
+            "roc": roc_auc_score(perceptron_test_y, prediction),
+            "accuracy": accuracy_score(perceptron_test_y, prediction)
+        }
+
+        perceptron_metrics_list.append(perceptron_metrics)
+
+        print("Perceptron with the transformed features")
+        print_classifier_scores(perceptron_metrics)
+        print("\n")
+        perceptron_modified = Perceptron(penalty="l2", n_iter=100)
+        perceptron_modified.fit(modified_transformed_perceptron_train_x, perceptron_train_y)
+        prediction_modified = perceptron_modified.predict(modified_transformed_perceptron_test_x)
+
+        perceptron_metrics_modified = {
+            "f1": f1_score(perceptron_test_y, prediction_modified),
+            "precision": precision_score(perceptron_test_y, prediction_modified),
+            "recall": recall_score(perceptron_test_y, prediction_modified),
+            "roc": roc_auc_score(perceptron_test_y, prediction_modified),
+            "accuracy": accuracy_score(perceptron_test_y, prediction_modified)
+        }
+        perceptron_modified_metrics_list.append(perceptron_metrics_modified)
+
+        print("Perceptron with the transformed features and concatenated bag of words ")
+        print_classifier_scores(perceptron_metrics_modified)
+
+        print("*********** End of fold {} ***********".format(n_fold))
+    print("Fold Scores")
+    print("SVM with domain adaptation")
+    calculate_and_print_fold_scores(svm_wda_metrics_list)
+
+
+def calculate_and_print_fold_scores(metrics_list):
+    keys = metrics_list[0].keys()
+
+    perceptron_metrics_modified = {
+            "f1": 0,
+            "precision": 0,
+            "recall": 0,
+            "roc": 0,
+            "accuracy": 0
+    }
+
+    for metrics_dict in metrics_list:
+        for key in keys:
+            perceptron_metrics_modified[key] = perceptron_metrics_modified[key] + metrics_dict[key]
+    for key in perceptron_metrics_modified:
+        perceptron_metrics_modified[key] = perceptron_metrics_modified[key]/len(metrics_list)
+
+    print_classifier_scores(perceptron_metrics_modified)
+
+
+    print()
+def print_classifier_scores(metrics):
+    keys = metrics.keys()
+    for key in keys:
+        output = "{}: {}".format(key, metrics[key])
+        print(output)
+
 if __name__ == "__main__":
     main()

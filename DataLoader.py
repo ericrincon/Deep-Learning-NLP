@@ -108,13 +108,23 @@ class DataLoader(object):
         columns should be a dictionary that maps the indices to get with their respective names in the csv file.
     """
 
-    def cross_fold_valdation(self, features, targets):
+    """
+        Returns n_folds folds (default set to five) with each fold consisting of
+        a train sample and test sample. Within each train/test sample there is a list
+        object containing the x and y
+    """
+    def cross_fold_valdation(self, features, targets, n_folds=5):
         n = features.shape[0]
-        k_fold = KFold(n, 5, shuffle=True)
+        k_fold = KFold(n, n_folds, shuffle=True)
         folds = []
+
         for train, test in k_fold:
-            train_sample = [features[train, :], targets[train]]
-            test_sample = [features[test, :], targets[test]]
+            if len(features.shape) > 1:
+                train_sample = [features[train, :], targets[train]]
+                test_sample = [features[test, :], targets[test]]
+            else:
+                train_sample = [features[train], targets[train]]
+                test_sample = [features[test], targets[test]]
             fold = [train_sample, test_sample]
             folds.append(fold)
         return folds
@@ -180,15 +190,14 @@ class DataLoader(object):
         scikit-learn's tfidf
         y: is vector representing all the corresponding labels labeled 0 or 1.
     """
-    def get_train_test_data(self, data, sparse=False, add_index_vector=True):
+    def get_transformed_features(self, x, sparse=False, add_index_vector=True):
         """
         if isinstance(data, type("")):
             data = self.get_feature_matrix(indices)
         else:
             data = self.get_feature_matrix(data=[data], columns=indices)
         """
-        feature_matrix = data[0]
-        y = data[1]
+        feature_matrix = x
         x_train_counts = self.count_vect.fit_transform(feature_matrix)
         x_train_tfidf = self.tfidf_transformer.fit_transform(x_train_counts)
         if not sparse:
@@ -202,7 +211,7 @@ class DataLoader(object):
                 x_train_tfidf = numpy.hstack((index_vector, x_train_tfidf))
             else:
                 x_train_tfidf = scipy.sparse.hstack((index_vector, x_train_tfidf))
-        return [x_train_tfidf, y]
+        return x_train_tfidf
     def transform(self, x, sparse=False):
         counts = self.count_vect.transform(x)
         tfidf = self.tfidf_transformer.transform(counts)
