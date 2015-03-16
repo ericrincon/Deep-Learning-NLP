@@ -246,7 +246,7 @@ def transfer_learning():
         perceptron_train_x = target_source_train_x_copy.todense()
         perceptron_train_y = target_source_train_y
 
-        perceptron_test_x = target_source_test_x.todense()
+        perceptron_test_x = target_source_test_x_copy.todense()
         perceptron_test_y = target_source_test_y
 
 
@@ -330,26 +330,28 @@ def transfer_learning():
     print("Fold Scores")
     print("SVM with domain adaptation")
     calculate_and_print_fold_scores(svm_wda_metrics_list)
+    print("\nSVM without domain adaptation")
+    calculate_and_print_fold_scores(svm_metrics_list)
+    print("\nPerceptron with transfer learning")
+    calculate_and_print_fold_scores(perceptron_metrics_list)
+    print("\nPerceptron with transfer learning and concatenated bag of words")
+    calculate_and_print_fold_scores(perceptron_modified_metrics_list)
+
 
 
 def calculate_and_print_fold_scores(metrics_list):
     keys = metrics_list[0].keys()
 
-    perceptron_metrics_modified = {
-            "f1": 0,
-            "precision": 0,
-            "recall": 0,
-            "roc": 0,
-            "accuracy": 0
-    }
-
+    temp_metrics_dict = {}
+    for key in keys:
+        temp_metrics_dict.update({key: 0})
     for metrics_dict in metrics_list:
         for key in keys:
-            perceptron_metrics_modified[key] = perceptron_metrics_modified[key] + metrics_dict[key]
-    for key in perceptron_metrics_modified:
-        perceptron_metrics_modified[key] = perceptron_metrics_modified[key]/len(metrics_list)
+            temp_metrics_dict[key] = temp_metrics_dict[key] + metrics_dict[key]
+    for key in temp_metrics_dict:
+        temp_metrics_dict[key] = temp_metrics_dict[key]/len(metrics_list)
 
-    print_classifier_scores(perceptron_metrics_modified)
+    print_classifier_scores(temp_metrics_dict)
 
 
     print()
