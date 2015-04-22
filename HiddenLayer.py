@@ -4,9 +4,11 @@ import theano.tensor as T
 import theano
 import numpy
 
+from scipy.stats import bernoulli
+
 class HiddenLayer(object):
     def __init__(self, rng, input, n_in, n_out, W=None, b=None,
-                 activation=T.tanh):
+                 activation=T.tanh, dropout=False, dropout_rate=.5):
         """
         Typical hidden layer of a MLP: units are fully-connected and have
         sigmoidal activation function. Weight matrix W is of shape (n_in,n_out)
@@ -65,7 +67,15 @@ class HiddenLayer(object):
 
         self.W = W
         self.b = b
+        self.n_out = n_out
+        self.n_in = n_in
+
         lin_output = T.dot(input, self.W) + self.b
+
+        if dropout:
+            r = bernoulli.rvs(dropout_rate, size=self.n_out)
+            r = theano.shared(r, 'r')
+            lin_output = T.dot(lin_output, r)
         self.output = (
             lin_output if activation is None
             else activation(lin_output)

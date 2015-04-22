@@ -128,9 +128,11 @@ class DataLoader(object):
             fold = [train_sample, test_sample]
             folds.append(fold)
         return folds
-    def get_feature_matrix(self, columns, data="", path=""):
+    def get_feature_matrix(self, columns, data=""):
         #feature_matrix: the return value that will contain all the documents with the appropriate
         #value concatenated to each respective element
+
+        feature_matrices = []
 
         if isinstance(data, type("")):
             data = self.csv_files
@@ -169,20 +171,29 @@ class DataLoader(object):
                     feature_vector += features
                 feature_matrix.append(numpy.asarray(feature_vector))
 
-            y_to_append = numpy.asarray(csv_file.iloc[:, y_i])
+            targets = numpy.asarray(csv_file.iloc[:, y_i])
+            #Convert y vector into int format and relabel -1 to 0 for Theano
+            targets = numpy.asarray(targets)
+            targets = numpy.float_(targets)
+            targets[targets == -1] = 0
+            feature_matrix = numpy.asarray(feature_matrix)
+            targets = numpy.intc(targets)
+            feature_matrices.append([feature_matrix, targets])
+            feature_matrix = []
+
+            """
             if i > 0:
                 targets = numpy.concatenate((targets, y_to_append))
             else:
                 targets = y_to_append
-        targets = numpy.asarray(targets).flatten()
+            """
+        #targets = numpy.asarray(targets).flatten()
         columns.update({'y': 6})
 
-        #Convert y vector into int format and relabel -1 to 0 for Theano
-        targets = numpy.asarray(targets)
-        targets = numpy.intc(targets)
-        targets[targets == -1] = 0
-
-        return [numpy.asarray(feature_matrix), targets]
+        if len(feature_matrices) == 1:
+            return feature_matrices.pop()
+        else:
+            return feature_matrices
    #     return [numpy.asarray(feature_matrix), numpy.asarray(csv_file.iloc[:, y_i])]
     """
         Main def to call to get data from csv file and outputs in [x_train_tfidf, y].
@@ -190,7 +201,7 @@ class DataLoader(object):
         scikit-learn's tfidf
         y: is vector representing all the corresponding labels labeled 0 or 1.
     """
-    def get_transformed_features(self, x, sparse=False, add_index_vector=True):
+    def get_transformed_features(self, x, sparse=False, add_index_vector=True, tfidf=False):
         """
         if isinstance(data, type("")):
             data = self.get_feature_matrix(indices)
@@ -199,7 +210,12 @@ class DataLoader(object):
         """
         feature_matrix = x
         x_train_counts = self.count_vect.fit_transform(feature_matrix)
-        x_train_tfidf = self.tfidf_transformer.fit_transform(x_train_counts)
+
+        if tfidf:
+            x_train_tfidf = self.tfidf_transformer.fit_transform(x_train_counts)
+        else:
+            x_train_tfidf = x_train_counts
+
         if not sparse:
             x_train_tfidf = x_train_tfidf.todense()
 
@@ -212,14 +228,21 @@ class DataLoader(object):
             else:
                 x_train_tfidf = scipy.sparse.hstack((index_vector, x_train_tfidf))
         return x_train_tfidf
-    def transform(self, x, sparse=False):
+    def transform(self, x, sparse=False, tfidf=False):
         counts = self.count_vect.transform(x)
-        tfidf = self.tfidf_transformer.transform(counts)
 
-        if sparse:
-            return tfidf
+        if tfidf:
+            tfidf = self.tfidf_transformer.transform(counts)
+
+            if sparse:
+                return tfidf
+            else:
+                return tfidf.todense()
         else:
-            return tfidf.todense()
+            if sparse:
+                return counts
+            else:
+                return counts.todense()
     """Takes in a parameter folder, reads all csv files and then returns a list containing the csv files.
     """
     def get_path(self):

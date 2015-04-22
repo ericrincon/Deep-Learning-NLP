@@ -11,6 +11,7 @@ from sklearn.metrics import roc_auc_score
 from sklearn.metrics import accuracy_score
 
 class SVM:
+
     def __init__(self, metric_list="none", parameter_list="none"):
         if metric_list == "none":
             self.metrics = {"F1": 0, "Accuracy": 0, "AUC": 0, "Precision": 0, "Recall": 0}
