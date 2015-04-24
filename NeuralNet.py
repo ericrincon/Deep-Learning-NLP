@@ -335,12 +335,13 @@ class NeuralNet:
             hl_W = hidden_layer.W
             hl_b = hidden_layer.b
 
+            if self.dropout:
+                hl_W *= self.dropout_rate
             weight_matrix = self.activation_function(T.dot(input, hl_W) + hl_b)
 
             #Multiply the weights by the expected value of the dropout which is just the
             #dropoutrate so in most cases half the weights but only at test time
-            if self.dropout:
-                weight_matrix *= self.dropout_rate
+
             input = weight_matrix
 
         #Get the weights and bias from the softmax output layer
@@ -355,6 +356,26 @@ class NeuralNet:
         )
         return get_y_prediction()
 
+    def transfer_learned_weights(self, x):
+        a_function = self.activation_function
+
+        final_hidden_layer = self.mlp.hidden_layers[-1]
+        w = final_hidden_layer.W
+        b = final_hidden_layer.b
+
+        if self.dropout:
+            transformation_function = theano.function(
+                inputs=[],
+                outputs=a_function(T.dot(x, (w * self.dropout_rate)) + b),
+                on_unused_input='ignore',
+            )
+        else:
+            transformation_function = theano.function(
+                inputs=[],
+                outputs=a_function(T.dot(x, w) + b),
+                on_unused_input='ignore',
+            )
+        return transformation_function()
     def __str__(self):
         return "MLP:\nF1 Score: {}\nPrecision: {}\n" \
                  "Recall: {}\nAccuracy: {}\nROC: {}\n".format(self.metrics['F1'],

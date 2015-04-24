@@ -21,7 +21,7 @@ class SVM:
         if parameter_list == "none":
             c_range = 10. ** numpy.arange(-2, 3)
             gamma_range = 10. ** numpy.arange(-3, 1)
-            self.parameters = {"kernel": "rbf", "c_range": c_range, "gamma_range": gamma_range, "score_model":"f1"}
+            self.parameters = {"kernel": "linear", "c_range": c_range, "gamma_range": gamma_range, "score_model":"f1"}
         else:
             self.parameters = parameter_list
         svm_classifier = svm.SVC(kernel=self.parameters["kernel"])
