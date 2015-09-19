@@ -59,6 +59,7 @@ class DataLoader(object):
             x = x[indices]
             y = y[indices]
         return [x, y]
+
     def create_random_samples(self, features, targets, train_p=0, valid_p=0, test_p=0, get_ensemble_test_set=False):
         while not(train_p >= 0 or train_p<=1):
             train_p = input('Please enter a value between 0 and 1 for train percentage: ')
@@ -69,7 +70,13 @@ class DataLoader(object):
         n_documents = features.shape[0]
         limit = features.shape[0] - (n_documents % 10)
         data = self.shuffle_x_and_y(features, targets)
-        features = data[0][:limit, :]
+        is_matrix = True
+
+        if len(data[0].shape) > 1:
+            features = data[0][:limit, :]
+        else:
+            features = data[0][:limit]
+            is_matrix = False
         targets = data[1][:limit]
         x = [] #features
         y = [] #target labels
@@ -79,18 +86,27 @@ class DataLoader(object):
         test_set_n_cols = n_documents*test_p + valid_set_n_cols
 
         if not(train_p == 0):
-            train_features = features[:train_set_n_cols, :]
+            if is_matrix:
+                train_features = features[:train_set_n_cols, :]
+            else:
+                train_features = features[:train_set_n_cols]
             train_targets = targets[:train_set_n_cols]
             x.append(train_features)
             y.append(train_targets)
 
         if not(valid_p == 0):
-            valid_features = features[train_set_n_cols: valid_set_n_cols,:]
+            if is_matrix:
+                valid_features = features[train_set_n_cols: valid_set_n_cols, :]
+            else:
+                valid_features = features[train_set_n_cols: valid_set_n_cols]
             valid_targets = targets[train_set_n_cols: valid_set_n_cols]
             x.append(valid_features)
             y.append(valid_targets)
         if not(test_p == 0):
-            test_features = features[valid_set_n_cols:test_set_n_cols, :]
+            if is_matrix:
+                test_features = features[valid_set_n_cols:test_set_n_cols, :]
+            else:
+                test_features = features[valid_set_n_cols:test_set_n_cols]
             test_targets = targets[valid_set_n_cols:test_set_n_cols]
             x.append(test_features)
             y.append(test_targets)
@@ -128,7 +144,7 @@ class DataLoader(object):
             fold = [train_sample, test_sample]
             folds.append(fold)
         return folds
-    def get_feature_matrix(self, columns, data=""):
+    def get_feature_matrix(self, columns, data="", concatenate=False):
         #feature_matrix: the return value that will contain all the documents with the appropriate
         #value concatenated to each respective element
 
@@ -166,7 +182,10 @@ class DataLoader(object):
 
                     #concatenate the row name to each respective feature
                     for string in document_strings:
-                        features += (columns[n_key] + string) + " "
+                        if concatenate:
+                            features += (columns[n_key] + string) + " "
+                        else:
+                            features += string + " "
 
                     feature_vector += features
                 feature_matrix.append(numpy.asarray(feature_vector))

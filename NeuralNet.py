@@ -2,7 +2,9 @@ __author__ = 'eric_rincon'
 
 import time
 import numpy
-
+import timeit
+import sys
+import os
 import theano
 import theano.tensor as T
 
@@ -11,11 +13,11 @@ from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
 from sklearn.metrics import roc_auc_score
 from sklearn.metrics import accuracy_score
-from Domain_MLP import Domain_MLP
+
 
 from MLP import MLP
 
-class NeuralNet:
+class NeuralNet():
     """
         Attributes:
             features: Numpy array matrix that represents features
@@ -192,7 +194,6 @@ class NeuralNet:
             }
         )
 
-        # end-snippet-5
 
         ###############
         # TRAIN MODEL #
@@ -200,7 +201,7 @@ class NeuralNet:
         print('... training')
 
         # early-stopping parameters
-        patience = number_in  # look as this many examples regardless
+        patience = 1000000  # look as this many examples regardless
         patience_increase = 2  # wait this much longer when a new best is
                                # found
         improvement_threshold = 0.995  # a relative improvement of this much is
@@ -213,7 +214,9 @@ class NeuralNet:
 
         best_validation_loss = numpy.inf
         best_iter = 0
-        start_time = time.clock()
+        test_score = 0.
+        start_time = timeit.default_timer()
+
         epoch = 0
         done_looping = False
 
@@ -226,21 +229,23 @@ class NeuralNet:
                 iter = (epoch - 1) * n_train_batches + minibatch_index
 
                 if (iter + 1) % validation_frequency == 0:
-                    training_losses = [training_errors(i) for i
-                                        in range(n_train_batches)]
-                    this_training_loss = numpy.mean(training_losses)
                     # compute zero-one loss on validation set
                     validation_losses = [validate_model(i) for i
                                          in range(n_valid_batches)]
                     this_validation_loss = numpy.mean(validation_losses)
-                    output = "epoch {}, minibatch {}/{}, training error {}, validation error {}".format(
-                        epoch,
-                        (minibatch_index + 1),
-                        n_train_batches,
-                        this_training_loss,
-                        this_validation_loss
+
+                    print(
+                        'epoch %i, minibatch %i/%i, validation error %f %%, cost %f' %
+                        (
+                            epoch,
+                            minibatch_index + 1,
+                            n_train_batches,
+                            this_validation_loss * 100.,
+                            cost
+
+                        )
                     )
-                    print(output)
+
                     # if we got the best validation score until now
                     if this_validation_loss < best_validation_loss:
                         #improve patience if loss improvement is good enough
@@ -253,39 +258,23 @@ class NeuralNet:
                         best_validation_loss = this_validation_loss
                         best_iter = iter
 
-                        # test it on the test set
-                        """
-                        test_losses = [test_model(i) for i
-                                       in range(n_test_batches)]
-                        test_score = numpy.mean(test_losses)
-                        """
-
-                        """
-                        f1_scores = [f1_model(i)[0] for i in range(n_test_batches)]
-                        f1_score = numpy.mean(f1_scores)
-
-                        precision = [f1_model(i)[1] for i in range(n_test_batches)]
-                        precision_avg = numpy.mean(precision)
-
-                        recall = [f1_model(i)[2] for i in range(n_test_batches)]
-                        recall_avg = numpy.mean(recall)
-                        """
-                        """
                         print(('     epoch %i, minibatch %i/%i, test error of '
                                'best model %f %%') %
                               (epoch, minibatch_index + 1, n_train_batches,
                                test_score * 100.))
-                        """
 
                 if patience <= iter:
                     done_looping = True
                     break
-                    """
+
+        end_time = timeit.default_timer()
         print(('Optimization complete. Best validation score of %f %% '
                'obtained at iteration %i, with test performance %f %%') %
               (best_validation_loss * 100., best_iter + 1, test_score * 100.))
+        print(sys.stderr, ('The code for file ' +
+                              os.path.split(__file__)[1] +
+                              ' ran for %.2fm' % ((end_time - start_time) / 60.)))
 
-              """
 
     def setup_labels(self, y):
 

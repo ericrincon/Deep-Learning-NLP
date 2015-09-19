@@ -3,7 +3,8 @@ __author__ = 'eric_rincon'
 import numpy
 import theano
 import copy
-
+import os
+import sys
 from Feature_Engineer import Feature_Engineer
 from sklearn.linear_model import Perceptron
 
@@ -13,25 +14,20 @@ from DataLoader import DataLoader
 from NeuralNet import NeuralNet
 from SVM import SVM
 
-from sklearn.metrics import f1_score
-from sklearn.metrics import precision_score
-from sklearn.metrics import recall_score
-from sklearn.metrics import roc_auc_score
-from sklearn.metrics import accuracy_score
-
 from scipy import sparse
+from csv import DictWriter
+import csv
 
 def main():
     transfer_learning()
 
-def transfer_learning():
+def transfer_learning(print_output=True):
     path = 'datasets/'
     data_loader = DataLoader(path)
     names = {1: 'title', 4: 'abstract', 5: 'mesh', 'y': 6}
     transformed_data_sets = []
 
     path = 'datasets/'
-
 
     files = [f for f in listdir(path) if isfile(join(path,f))]
     files.pop(0)
@@ -41,28 +37,24 @@ def transfer_learning():
     training_domains = data_loader.csv_files
     all_domains_svm_wda_metrics_list = []
     all_domains_svm_metrics_list = []
-    all_domains_perceptron_metrics_list = []
-    all_domains_perceptron_modified_metrics_list = []
-    all_domains_perceptron_without_list = []
     all_domains_svm_bow_mlp_list = []
     all_domains_mlp_fold_scores = []
-    all_domains_mlptanh_fold_scores = []
 
-    file = open('test.txt', 'w+')
     for i, held_out_domain in enumerate(domains):
         training_domains.pop(i)
         names = {1: 'title', 4: 'abstract', 5: 'mesh', 'y': 6}
         svm_wda_metrics_list = []
         svm_metrics_list = []
-        perceptron_metrics_list = []
-        perceptron_modified_metrics_list = []
-        perceptron_without_list = []
         svm_bow_mlp_list = []
-        mlp_fold_scores = []
-        mlptanh_fold_scores = []
+
+        folder_name = '/' + files[i]
+        domain_name = files[i].__str__()
+        domain_name = domain_name.split('.')[0]
+        folder_name = 'output' + '/' + domain_name
 
         output = "Dataset: {}".format(files[i])
-        print(output)
+        if print_output:
+            print(output)
 
         #shuffle(data_loader.csv_files)
         data_loader.csv_files = training_domains
@@ -77,7 +69,7 @@ def transfer_learning():
         folds = data_loader.cross_fold_valdation(held_out_x, held_out_y)
         #Get the total number of domains i.e., the number of files with documents
         n_source_domains = len(data_sets)
-
+        os.makedirs(folder_name)
 
         #Must convert the data type of the matrix for theano
         feature_engineer = Feature_Engineer()
@@ -85,8 +77,11 @@ def transfer_learning():
         #Start the 5 fold cross validation
         for n_fold, fold in enumerate(folds):
             output = "Fold {}: \n".format(n_fold)
-            print(output)
-            file.write(output)
+            if print_output:
+                print(output)
+            output = '{}/{}/fold_{}.csv'.format(os.getcwd(), folder_name, (n_fold + 1))
+            file = open(output, 'w')
+            csv_writer = csv.writer(file)
 
             #Each sample is a list that contains the x and y for the classifier
             #Typically fold[0] would be the train sample but because it is switched for
@@ -98,6 +93,12 @@ def transfer_learning():
             #Each sample contains the text and y labels from the data before it is put into the sklearn count vectorizer
             train_x, train_y = train_sample
             test_x, test_y = test_sample
+
+            train_y[train_y == 0] = 2
+            train_y[train_y == 1] = 3
+            test_y[test_y == 0] = 2
+            test_y[test_y == 1] = 3
+
 
             #Get the bag of words representation of the small 20% target source data and transform the other 80%
             #of the data.
@@ -118,25 +119,23 @@ def transfer_learning():
             augmented_feature_matrix_test, augmented_y_test = feature_engineer.augmented_feature_matrix(held_out_domain=[test_x, test_y],
                                                                                                         train_or_test=False,
                                                                                                         n_source_domains=len(transformed_domains))
-
+            augmented_y_test[augmented_y_test == 2] = 0
+            augmented_y_test[augmented_y_test == 3] = 1
             #SVM with the augmented feature matrix for domain adaptation
             svm_wda = SVM()
             svm_wda.train(augmented_feature_matrix_train, augmented_y_train)
             svm_wda.test(augmented_feature_matrix_test, augmented_y_test)
-            output = "SVM with domain adaptation metrics:"
-            print(output)
-            print(svm_wda)
-            print("\n")
-            file.write(output)
-            file.write(svm_wda.__str__())
-            file.write('\n')
+            output = "\nSVM with domain adaptation metrics:"
+            csv_writer.writerow([output])
+            if print_output:
+                print(output)
+                print(svm_wda)
+                print("\n")
             svm_wda_metrics_list.append(svm_wda.metrics)
 
-            classifier = NeuralNet(n_hidden_units=[250], output_size=2, batch_size=20, n_epochs=200, dropout=True,
+            classifier = NeuralNet(n_hidden_units=[250], output_size=4, batch_size=20, n_epochs=200, dropout=True,
                                    activation_function='relu', learning_rate=.3, momentum=True, momentum_term=.5)
-            classifier_tanh = NeuralNet(n_hidden_units=[250], output_size=2, batch_size=20, n_epochs=200, dropout=True,
-                                   activation_function='tanh', learning_rate=.3, momentum=True, momentum_term=.5)
-
+            write_to_csv(svm_wda.metrics, csv_writer)
 
 
             y_for_mlp = []
@@ -153,45 +152,30 @@ def transfer_learning():
                     neural_net_x_train = numpy.vstack((neural_net_x_train, domain_x))
                     neural_net_y_train = numpy.hstack((neural_net_y_train, domain_y))
 
+            neural_net_x_train = numpy.float_(neural_net_x_train)
+
+
+            classifier.train(neural_net_x_train, neural_net_y_train)
+
+            test_y[test_y == 2] = 0
+            test_y[test_y == 3] = 1
+            svm_y_train = neural_net_y_train
+            svm_y_train[svm_y_train == 2] = 0
+            svm_y_train[svm_y_train == 3] = 1
+
             #SVM without the domain adaptation
             svm = SVM()
-            svm.train(sparse.coo_matrix(neural_net_x_train), neural_net_y_train)
+            svm.train(sparse.coo_matrix(neural_net_x_train), svm_y_train)
             svm.test(test_x, test_y)
-            output = "SVM without domain adaptation"
-            print(output)
-            print(svm)
-            print("\n")
+            output = "\nSVM without domain adaptation"
+            if print_output:
+                print(output)
+                print(svm)
+                print("\n")
+            csv_writer.writerow([output])
             svm_metrics_list.append(svm.metrics)
-            file.write(output)
-            file.write(svm.__str__())
-            file.write('\n')
-            output = "Perceptron with only bag of words"
-            print(output)
-            file.write(output)
+            write_to_csv(svm.metrics, csv_writer)
 
-
-            perceptron_without = Perceptron(penalty='l2', n_iter=100)
-            perceptron_without.fit(neural_net_x_train, neural_net_y_train)
-            perceptron_without_prediction = perceptron_without.predict(test_x)
-            perceptron_metrics_modified_bow = {
-                "f1": f1_score(test_y, perceptron_without_prediction),
-                "precision": precision_score(test_y, perceptron_without_prediction),
-                "recall": recall_score(test_y, perceptron_without_prediction),
-                "roc": roc_auc_score(test_y, perceptron_without_prediction),
-                "accuracy": accuracy_score(test_y, perceptron_without_prediction)
-            }
-            perceptron_without_list.append(perceptron_metrics_modified_bow)
-
-            neural_net_x_train = numpy.float_(neural_net_x_train)
-            classifier_tanh.train(neural_net_x_train, neural_net_y_train)
-            classifier_tanh.test(test_x.todense(), test_y)
-            print("Tanh MLP")
-            print(classifier_tanh)
-            classifier.train(neural_net_x_train, neural_net_y_train)
-            classifier.test(test_x.todense(), test_y)
-            print(classifier)
-            mlp_fold_scores.append(classifier.metrics)
-            file.write(classifier.__str__())
 
             #Transform the feature vectors of the held out data to the learned hidden layer features of the previous
             #MLP trained with all n-1 datasets
@@ -207,127 +191,78 @@ def transfer_learning():
             modified_transformed_perceptron_test_x = numpy.hstack((transformed_perceptron_test_x,
                                                                    test_x.todense()))
 
-            perceptron = Perceptron(penalty="l2", n_iter=100)
-            perceptron.fit(transformed_perceptron_train_x, neural_net_y_train)
-            prediction = perceptron.predict(transformed_perceptron_test_x)
             output = "\nSVM with BoW and transformed features"
-            print(output)
+            csv_writer.writerow([output])
+            if print_output:
+                print(output)
             svm_mlp_bow = SVM()
-            svm_mlp_bow.train(sparse.coo_matrix(modified_transformed_perceptron_train_x), neural_net_y_train)
+            svm_mlp_bow.train(sparse.coo_matrix(modified_transformed_perceptron_train_x), svm_y_train)
             svm_mlp_bow.test(sparse.coo_matrix(modified_transformed_perceptron_test_x), test_y)
-            print(svm_mlp_bow)
-            file.write(svm_mlp_bow.__str__())
+            write_to_csv(svm_mlp_bow.metrics, csv_writer)
+            if print_output:
+                print(svm_mlp_bow)
             svm_bow_mlp_list.append(svm_mlp_bow.metrics)
 
-            perceptron_metrics = {
-                "f1": f1_score(test_y, prediction),
-                "precision": precision_score(test_y, prediction),
-                "recall": recall_score(test_y, prediction),
-                "roc": roc_auc_score(test_y, prediction),
-                "accuracy": accuracy_score(test_y, prediction)
-            }
 
-            perceptron_metrics_list.append(perceptron_metrics)
-            output = "Perceptron with the transformed features"
-            print(output)
-            file.write(output)
-            file.write(print_classifier_scores(perceptron_metrics))
-            print(print_classifier_scores(perceptron_metrics))
-            print("\n")
-            file.write('\n')
-            perceptron_modified = Perceptron(penalty="l2", n_iter=100)
-            perceptron_modified.fit(modified_transformed_perceptron_train_x, neural_net_y_train)
-            prediction_modified = perceptron_modified.predict(modified_transformed_perceptron_test_x)
-
-            perceptron_metrics_modified = {
-                "f1": f1_score(test_y, prediction_modified),
-                "precision": precision_score(test_y, prediction_modified),
-                "recall": recall_score(test_y, prediction_modified),
-                "roc": roc_auc_score(test_y, prediction_modified),
-                "accuracy": accuracy_score(test_y, prediction_modified)
-            }
-            perceptron_modified_metrics_list.append(perceptron_metrics_modified)
-            output = "Perceptron with the transformed features and concatenated bag of words "
-            print(output)
-            file.write(output)
-            file.write(print_classifier_scores(perceptron_metrics_modified))
-            print(print_classifier_scores(perceptron_metrics_modified))
             output = "*********** End of fold {} ***********".format(n_fold)
-            print(output)
-            file.write(output)
+
+            if print_output:
+                print(output)
+
 
         training_domains = copy.deepcopy(all_domains)
+        file_name = '{}/{}/fold_averages.csv'.format(os.getcwd(), folder_name)
+        file = open(file_name, 'w+')
+        csv_writer = csv.writer(file)
 
-        output = "----------------------------------------------------------------------------------------" \
-                 "\nFold Scores\n " \
+        if print_output:
+            output = "----------------------------------------------------------------------------------------" \
+                     "\nFold Scores\n " \
+                     "SVM with domain adaptation"
+            print_write_output(output, svm_wda_metrics_list, all_domains_svm_wda_metrics_list, csv_writer)
+
+            output = "\nSVM without domain adaptation"
+            print_write_output(output, svm_metrics_list, all_domains_svm_metrics_list, csv_writer)
+
+            output = "SVM with BoW and transformed features"
+            print_write_output(output, svm_bow_mlp_list, all_domains_svm_bow_mlp_list, csv_writer)
+
+
+
+    file_name = '{}/output/all_fold_averages.csv'.format(os.getcwd())
+    file = open(file_name, 'w+')
+    csv_writer = csv.writer(file)
+    if print_output:
+        output = "*******************************************************************************************" \
+                 "\nAll domain macro metric scores\n " \
                  "SVM with domain adaptation"
-        print_write_output(output, svm_wda_metrics_list, all_domains_svm_wda_metrics_list, file)
+        print_macro_scores("SVM with domain adaptation", all_domains_svm_wda_metrics_list, csv_writer)
 
         output = "\nSVM without domain adaptation"
-        print_write_output(output, svm_metrics_list, all_domains_svm_metrics_list, file)
-
-        output = "\nPerceptron without transfer learning"
-        print_write_output(output, perceptron_without_list, all_domains_perceptron_without_list, file)
-
-        output = "\nPerceptron with transfer learning"
-        print_write_output(output, perceptron_metrics_list, all_domains_perceptron_metrics_list, file)
-
-        output = "\nPerceptron with transfer learning and concatenated bag of words"
-        print_write_output(output, perceptron_modified_metrics_list, all_domains_perceptron_modified_metrics_list, file)
+        print_macro_scores(output, all_domains_svm_metrics_list, csv_writer)
 
         output = "SVM with BoW and transformed features"
-        print_write_output(output, svm_bow_mlp_list, all_domains_svm_bow_mlp_list, file)
-
-        output = "MLP scores with relu activation function"
-        print_write_output(output, mlp_fold_scores, all_domains_mlp_fold_scores, file)
-
-        output = "\nMLP with tanh activation function"
-        print_write_output(output, mlptanh_fold_scores, all_domains_mlptanh_fold_scores, file)
-
-    output = "*******************************************************************************************" \
-             "\nAll domain macro metric scores\n " \
-             "SVM with domain adaptation"
-    print_macro_scores(output, all_domains_svm_wda_metrics_list, file)
-
-    output = "\nSVM without domain adaptation"
-    print_macro_scores(output, all_domains_svm_metrics_list, file)
-
-    output = "\nPerceptron without transfer learning"
-    print_macro_scores(output, all_domains_perceptron_without_list, file)
-
-    output = "\nPerceptron with transfer learning"
-    print_macro_scores(output, all_domains_perceptron_metrics_list, file)
-
-    output = "\nPerceptron with transfer learning and concatenated bag of words"
-    print_macro_scores(output, all_domains_perceptron_modified_metrics_list, file)
-
-    output = "SVM with BoW and transformed features"
-    print_macro_scores(output, all_domains_svm_bow_mlp_list, file)
-
-    output = "MLP scores with relu activation function"
-    print_macro_scores(output, all_domains_mlp_fold_scores, file)
-
-    output = "\nMLP with tanh activation function"
-    print_macro_scores(output, all_domains_mlptanh_fold_scores, file)
+        print_macro_scores(output, all_domains_svm_bow_mlp_list, csv_writer)
 
 
 
 
-def print_write_output(title, classifier_metrics, all_domain_metrics, file):
-    file.write(title)
+
+def print_write_output(title, classifier_metrics, all_domain_metrics, csv_writer):
+    csv_writer.writerow([title])
     print(title)
     metrics = calculate_fold_scores(classifier_metrics)
     all_domain_metrics.append(metrics)
     output_classifer = print_classifier_scores(metrics)
     print(output_classifer)
-    file.write(output_classifer)
-def print_macro_scores(output, classifier_metrics, file):
-    file.write(output)
+    write_to_csv(metrics, csv_writer)
+def print_macro_scores(output, classifier_metrics, csv_writer):
+    csv_writer.writerow([output])
     print(output)
     metrics = calculate_fold_scores(classifier_metrics)
     output_classifer = print_classifier_scores(metrics)
     print(output_classifer)
-    file.write(output_classifer)
+    write_to_csv(metrics, csv_writer)
 
 def calculate_fold_scores(metrics_list):
     keys = metrics_list[0].keys()
@@ -351,5 +286,11 @@ def print_classifier_scores(metrics):
         output = "{}: {}\n".format(key, metrics[key])
         string+=output
     return string
+
+
+def write_to_csv(dict, csv_writer):
+    for key, value in dict.items():
+        csv_writer.writerow([key, value])
+
 if __name__ == "__main__":
     main()

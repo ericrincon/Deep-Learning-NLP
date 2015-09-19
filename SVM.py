@@ -10,6 +10,11 @@ from sklearn.metrics import recall_score
 from sklearn.metrics import roc_auc_score
 from sklearn.metrics import accuracy_score
 
+
+"""
+    Wrapper for sklearn svm written so ensembles with MLPs and other classifiers are easy to implement
+
+"""
 class SVM:
 
     def __init__(self, metric_list="none", parameter_list="none"):

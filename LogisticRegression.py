@@ -4,8 +4,6 @@ import theano
 import numpy
 import theano.tensor as T
 
-from sklearn.metrics import auc_score
-
 class LogisticRegression(object):
     """Multi-class Logistic Regression Class
 
